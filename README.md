@@ -73,7 +73,7 @@ npm start                  # 等价于 node server.js
 - 默认自动用浏览器打开 `http://localhost:3000`
 - 配置改完 `Ctrl+C` 重启即生效
 
-`start.bat` 是 Windows 一键启动脚本(等价 `npm start`,源码模式);macOS / Linux 直接用 `npm start`。
+**关于 `config.json`**:`config.json` 不在仓库里(已 gitignore,避免本地路径泄漏)。首次 clone 后没有这个文件,服务端会用内置默认值启动,`rootDir` 默认走 `process.cwd()`。通过 UI 改根目录会自动创建本地 `config.json`,但不会进入 git。
 
 ---
 
@@ -168,14 +168,16 @@ node server.js --config ~/.view-tool.json
 
 ### 配置文件位置
 
-| 模式 | 路径 |
-|------|------|
-| 源码运行(`npm start`) | `<项目根>/config.json` |
-| Windows SEA 二进制 | `%APPDATA%\view-tool\config.json` |
-| macOS SEA 二进制 | `~/Library/Application Support/view-tool/config.json` |
-| Linux SEA 二进制 | `$XDG_CONFIG_HOME/view-tool/config.json`(回退 `~/.config/view-tool/config.json`) |
+| 模式 | 路径 | 是否在仓库 |
+|------|------|----------|
+| 源码运行(`npm start`) | `<项目根>/config.json` | ❌ gitignore,本地自维护 |
+| Windows SEA 二进制 | `%APPDATA%\view-tool\config.json` | ❌ 首次运行时创建 |
+| macOS SEA 二进制 | `~/Library/Application Support/view-tool/config.json` | ❌ 首次运行时创建 |
+| Linux SEA 二进制 | `$XDG_CONFIG_HOME/view-tool/config.json`(回退 `~/.config/view-tool/config.json`) | ❌ 首次运行时创建 |
 
-`lib/user-paths.js#isSea()` 通过检测二进制同目录是否存在 `view-tool.blob` 来区分两种模式 —— **不要把 blob 单独移走**,否则会回退到工作目录下的 `config.json`,行为可能不符合预期。
+源码模式下文件不存在时,服务端会用内置 `DEFAULTS`(`lib/config-store.js`)启动;通过 UI 或 `POST /api/config` 修改根目录会**首次自动创建**该文件。`config.json` 已加入 `.gitignore`,不会进仓库,也不会被误提交。
+
+`lib/user-paths.js#isSea()` 通过检测二进制同目录是否存在 `view-tool.blob` 来区分源码 / SEA 模式 —— **不要把 blob 单独移走**,否则 `isSea()` 误判为源码模式,会回退到工作目录下的 `config.json`。
 
 写入采用**临时文件 + rename** 原子替换(`config-store.js`),不会写到一半崩了留下半截 JSON。
 
@@ -260,7 +262,7 @@ Windows 测试用 `skip: process.platform !== 'win32'` 跳过,darwin / linux 用
    - 绝对路径注入(`C:\Windows\System32`)
    - null 字节(`a.txt\0.bak`)
    - 空字符串 / 非字符串
-3. `config.json` 的 `rootDir` 只能通过 CLI 或 `POST /api/config` 显式修改,无文件遍历式注入面
+3. `rootDir` 只能通过 CLI(`--root`)或 `POST /api/config` 显式修改,无文件遍历式注入面
 4. HTML 预览 sandbox 在"脚本可用"和"不可同源操控父页"之间取得平衡 —— 见[HTML 预览的安全说明](#html-预览的安全说明)
 5. 服务监听 `localhost`,**不暴露到外网**;若需远程访问请自行加反向代理 + 鉴权
 
@@ -271,10 +273,10 @@ Windows 测试用 `skip: process.platform !== 'win32'` 跳过,darwin / linux 用
 ```
 view-tool/
 ├── package.json
+├── package-lock.json
 ├── sea-config.json              # SEA 构建清单(useCodeCache / disableExperimentalSEAWarning)
 ├── server.js                    # Express 入口:CLI 解析 + 配置加载 + 6 个路由 + 启动 banner
-├── start.bat                    # Windows 一键启动(等价 npm start)
-├── config.json                  # 源码模式下的配置(可改 rootDir / port)
+├── .gitignore
 │
 ├── lib/
 │   ├── errors.js                # AppError + Codes + toResponse
@@ -304,9 +306,18 @@ view-tool/
 │   ├── reveal.test.js           # 9 个(win32 + darwin + linux + 异常)
 │   └── html-preview.test.js     # 4 个(sandbox + className 回归保护)
 │
-└── dist/                        # 构建产物(gitignore)
-    ├── view-tool[.exe]
-    └── view-tool-*.zip
+└── (gitignore)
+    ├── node_modules/            # 依赖
+    ├── dist/                    # SEA 构建产物
+    │   ├── view-tool[.exe]
+    │   └── view-tool-*.zip
+    ├── config.json              # 本地配置(含 rootDir)
+    ├── start.bat                # Windows 一键启动(等价 npm start)
+    ├── docs/                    # 内部 TDD 设计 / 计划
+    ├── *.blob                   # SEA prep / runtime blob
+    ├── lib/public-bundle.gen.js # public/ 内嵌 base64(SEA 构建生成)
+    ├── lib/server.bundled.cjs   # esbuild bundle(SEA 构建生成)
+    └── sea-config.bundled.json  # 临时 SEA 清单(SEA 构建生成)
 ```
 
 ### `lib/` 模块职责
@@ -412,6 +423,6 @@ zip 文件名格式:`view-tool-<hostTag>-<target>.zip`,其中 `hostTag = ${proce
 
 ### 常见报错
 
-- **`端口 3000 已被占用`**:改 `config.json` 的 `port` 字段,或用 `node server.js --port 8080`
+- **`端口 3000 已被占用`**:用 `--port <其它端口>` 启动(如 `node server.js --port 8080`),或在本地 `config.json` 的 `port` 字段修改
 - **在 SSH / WSL 等无 GUI 环境**:服务会正常启动但跳过自动开浏览器,终端会打印手动访问地址
-- **`rootDir 不存在或不是目录,回退到 process.cwd()`**:`config.json` 里写了无效路径,改回有效路径或删除 `rootDir` 字段
+- **`rootDir 不存在或不是目录,回退到 process.cwd()`**:`config.json` 里写了无效路径(可手动编辑本地 `config.json`,或在 UI 里改)
