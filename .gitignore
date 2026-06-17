@@ -14,3 +14,6 @@ sea-config.bundled.json
 # 内部文档与平台脚本(不对外)
 docs/
 start.bat
+
+# 本地配置(含 rootDir,每个开发者本地维护)
+config.json
