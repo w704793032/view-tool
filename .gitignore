@@ -1,0 +1,16 @@
+node_modules/
+npm-debug.log
+.DS_Store
+*.log
+
+# SEA 构建产物
+dist/
+sea-prep.blob
+view-tool.blob
+lib/public-bundle.gen.js
+lib/server.bundled.cjs
+sea-config.bundled.json
+
+# 内部文档与平台脚本(不对外)
+docs/
+start.bat

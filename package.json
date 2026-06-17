@@ -1,0 +1,28 @@
+{
+  "name": "view-tool",
+  "version": "0.2.0",
+  "private": true,
+  "description": "本地 Web 文件浏览工具 (支持 SEA 打包为 Windows / macOS 单文件可执行)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "build:win": "node scripts/build-sea.js win",
+    "build:mac": "node scripts/build-sea.js mac",
+    "dist:win": "node scripts/build-sea.js win && node scripts/zip-artifact.js win",
+    "dist:mac": "node scripts/build-sea.js mac && node scripts/zip-artifact.js mac"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sea": {
+    "main": "server.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "postject": "^1.0.0-alpha.6"
+  }
+}

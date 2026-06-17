@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文件浏览工具</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <span class="toolbar-label">📁 根目录：</span>
+    <span id="rootDirLabel" class="root-dir">—</span>
+    <button id="changeRootBtn" class="btn">修改</button>
+    <span class="toolbar-spacer"></span>
+    <span id="configBadge" class="badge"></span>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div id="tree" class="tree" role="tree" aria-label="目录树"></div>
+    </aside>
+
+    <main class="main">
+      <nav id="breadcrumb" class="breadcrumb" aria-label="面包屑"></nav>
+      <section id="preview" class="preview">
+        <div class="placeholder">从左侧选择文件以预览</div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- 右键菜单（单例，由 app.js 控制内容） -->
+  <div id="ctxmenu" class="ctxmenu" hidden></div>
+
+  <!-- 修改根目录弹窗 -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-content">
+      <h3>修改根目录</h3>
+      <input id="modalInput" type="text" placeholder="例如 D:\some\path" />
+      <p id="modalError" class="modal-error" hidden></p>
+      <div class="modal-actions">
+        <button id="modalCancel" class="btn">取消</button>
+        <button id="modalConfirm" class="btn btn-primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- vendor 库 -->
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script type="module" src="vendor/pdf.min.mjs"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
