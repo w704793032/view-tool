@@ -15,6 +15,80 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .btn:hover { background: #f0f0f0; }
 .btn-primary { background: #2b6cb0; color: white; border-color: #2b6cb0; }
 .btn-primary:hover { background: #2c5282; }
+.root-switch { position: relative; }
+.root-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 900;
+  width: min(520px, calc(100vw - 32px));
+  max-height: 360px;
+  overflow: auto;
+  background: white;
+  border: 1px solid #d6d6d6;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+  padding: 6px;
+}
+.root-menu[hidden] { display: none; }
+.root-menu-heading {
+  padding: 6px 8px 3px;
+  color: #777;
+  font-size: 12px;
+  font-weight: 600;
+}
+.root-menu-empty {
+  padding: 12px;
+  color: #777;
+  font-size: 13px;
+}
+.root-menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+}
+.root-menu-item.active { background: #eef4fb; }
+.root-menu-main {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.root-menu-main:hover,
+.root-menu-action:hover { background: #eef2f7; }
+.root-menu-name {
+  display: block;
+  color: #222;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.root-menu-path {
+  display: block;
+  color: #777;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.root-menu-action {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font-size: 15px;
+}
 
 .layout { display: flex; flex: 1; overflow: hidden; }
 .sidebar { width: 320px; border-right: 1px solid #e0e0e0; overflow: auto; background: #fcfcfc; }

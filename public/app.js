@@ -1,6 +1,8 @@
 // ============== 状态 ==============
 const state = {
   rootDir: '',
+  recentRoots: [],
+  pinnedRoots: [],
   currentPath: '.',
   selectedFile: null,
   expandedDirs: new Set(['.']),
@@ -259,24 +261,164 @@ async function apiPost(url, body) {
 }
 
 // ============== 配置（根目录） ==============
-async function loadConfig() {
-  const cfg = await apiGet('/api/config');
+function applyConfig(cfg) {
   state.rootDir = cfg.rootDir;
+  state.recentRoots = Array.isArray(cfg.recentRoots) ? cfg.recentRoots : [];
+  state.pinnedRoots = Array.isArray(cfg.pinnedRoots) ? cfg.pinnedRoots : [];
   document.getElementById('rootDirLabel').textContent = cfg.rootDir;
   document.getElementById('configBadge').textContent = `端口 ${cfg.port}`;
 }
 
+async function loadConfig() {
+  const cfg = await apiGet('/api/config');
+  applyConfig(cfg);
+}
+
 async function changeRootDir(newRoot) {
   const cfg = await apiPost('/api/config', { rootDir: newRoot });
-  state.rootDir = cfg.rootDir;
+  applyConfig(cfg);
   state.currentPath = '.';
   state.selectedFile = null;
   state.expandedDirs = new Set(['.']);
-  document.getElementById('rootDirLabel').textContent = cfg.rootDir;
   await renderBreadcrumb();
   await renderTree();
   document.getElementById('preview').innerHTML =
     '<div class="placeholder">从左侧选择文件以预览</div>';
+  closeRootMenu();
+}
+
+function rootLeaf(root) {
+  return root.split(/[\\/]/).filter(Boolean).pop() || root;
+}
+
+function closeRootMenu() {
+  const menu = document.getElementById('rootMenu');
+  const btn = document.getElementById('switchRootBtn');
+  if (!menu || !btn) return;
+  menu.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+}
+
+function renderRootMenu() {
+  const menu = document.getElementById('rootMenu');
+  const pinned = state.pinnedRoots;
+  const pinnedSet = new Set(pinned);
+  const recent = state.recentRoots.filter((root) => !pinnedSet.has(root));
+  const sections = [
+    ['置顶', pinned],
+    ['最近', recent],
+  ].filter(([, roots]) => roots.length > 0);
+
+  if (sections.length === 0) {
+    menu.innerHTML = '<div class="root-menu-empty">暂无历史路径</div>';
+    return;
+  }
+
+  menu.innerHTML = '';
+  for (const [title, roots] of sections) {
+    const heading = document.createElement('div');
+    heading.className = 'root-menu-heading';
+    heading.textContent = title;
+    menu.appendChild(heading);
+
+    for (const root of roots) {
+      const row = document.createElement('div');
+      row.className = 'root-menu-item';
+      if (root === state.rootDir) row.classList.add('active');
+
+      const main = document.createElement('button');
+      main.className = 'root-menu-main';
+      main.type = 'button';
+      main.title = root;
+      main.dataset.root = root;
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'root-menu-name';
+      nameEl.textContent = rootLeaf(root);
+
+      const pathEl = document.createElement('span');
+      pathEl.className = 'root-menu-path';
+      pathEl.textContent = root;
+
+      main.append(nameEl, pathEl);
+
+      const pin = document.createElement('button');
+      pin.className = 'root-menu-action';
+      pin.type = 'button';
+      pin.title = pinnedSet.has(root) ? '取消置顶' : '置顶';
+      pin.dataset.action = pinnedSet.has(root) ? 'unpin' : 'pin';
+      pin.dataset.root = root;
+      pin.textContent = pinnedSet.has(root) ? '★' : '☆';
+
+      const remove = document.createElement('button');
+      remove.className = 'root-menu-action';
+      remove.type = 'button';
+      remove.title = '移除';
+      remove.dataset.action = 'remove';
+      remove.dataset.root = root;
+      remove.textContent = '×';
+
+      row.append(main, pin, remove);
+      menu.appendChild(row);
+    }
+  }
+}
+
+async function syncRootList(url, rootDir) {
+  const cfg = await apiPost(url, { rootDir });
+  applyConfig(cfg);
+  renderRootMenu();
+}
+
+function setupRootSwitcher() {
+  const btn = document.getElementById('switchRootBtn');
+  const menu = document.getElementById('rootMenu');
+
+  btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    renderRootMenu();
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+
+  menu.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const actionBtn = ev.target.closest('.root-menu-action');
+    if (actionBtn) {
+      const root = actionBtn.dataset.root;
+      const action = actionBtn.dataset.action;
+      try {
+        if (action === 'pin') await syncRootList('/api/roots/pin', root);
+        if (action === 'unpin') await syncRootList('/api/roots/unpin', root);
+        if (action === 'remove') await syncRootList('/api/roots/remove', root);
+      } catch (err) {
+        showToast(err.message, { kind: 'error', duration: 4000 });
+      }
+      return;
+    }
+
+    const item = ev.target.closest('.root-menu-main');
+    if (!item) return;
+    const root = item.dataset.root;
+    if (root === state.rootDir) {
+      closeRootMenu();
+      return;
+    }
+    try {
+      await changeRootDir(root);
+      showToast(`已切换到：${rootLeaf(root)}`, { kind: 'success', duration: 2000 });
+    } catch (err) {
+      showToast(`切换失败：${err.message}`, { kind: 'error', duration: 4000 });
+      renderRootMenu();
+    }
+  });
+
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('.root-switch')) closeRootMenu();
+  });
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') closeRootMenu();
+  });
 }
 
 // ============== 目录树 ==============
@@ -744,6 +886,7 @@ function setupModal() {
 
 // ============== 启动 ==============
 async function main() {
+  setupRootSwitcher();
   setupModal();
   installPermanentListeners();
   suppressNativeContextMenuOnCtxMenu();
