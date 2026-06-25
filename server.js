@@ -6,6 +6,12 @@ const { spawn } = require('node:child_process');
 const express = require('express');
 
 const { ConfigStore } = require('./lib/config-store');
+const {
+  addRecentRoot,
+  pinRoot,
+  unpinRoot,
+  removeRoot,
+} = require('./lib/root-history');
 const { buildTree } = require('./lib/tree-builder');
 const { readFileMeta, streamFile, MIME } = require('./lib/file-reader');
 const { AppError, toResponse, Codes } = require('./lib/errors');
@@ -88,8 +94,18 @@ function start() {
   const app = express();
   app.use(express.json());
 
+  function configPayload() {
+    return {
+      rootDir,
+      recentRoots: config.recentRoots || [],
+      pinnedRoots: config.pinnedRoots || [],
+      version: config.version,
+      port,
+    };
+  }
+
   app.get('/api/config', (_req, res) => {
-    res.json({ rootDir, version: config.version, port });
+    res.json(configPayload());
   });
 
   app.post('/api/config', (req, res) => {
@@ -105,9 +121,48 @@ function start() {
       return res.status(400).json({ error: { code: 'NOT_A_DIRECTORY', message: '该路径不是一个目录' } });
     }
     rootDir = abs;
-    config.rootDir = abs;
+    Object.assign(config, addRecentRoot({ ...config, rootDir: abs }, abs));
     store.save(config);
-    res.json({ rootDir, version: config.version, port });
+    res.json(configPayload());
+  });
+
+  function readRootBody(req, res) {
+    const value = req.body && req.body.rootDir;
+    if (typeof value !== 'string' || value.length === 0) {
+      res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'rootDir required' } });
+      return null;
+    }
+    return path.resolve(value);
+  }
+
+  app.post('/api/roots/pin', (req, res) => {
+    const abs = readRootBody(req, res);
+    if (!abs) return;
+    if (!fs.existsSync(abs)) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Path does not exist' } });
+    }
+    if (!fs.statSync(abs).isDirectory()) {
+      return res.status(400).json({ error: { code: 'NOT_A_DIRECTORY', message: 'Path is not a directory' } });
+    }
+    Object.assign(config, pinRoot(config, abs));
+    store.save(config);
+    res.json(configPayload());
+  });
+
+  app.post('/api/roots/unpin', (req, res) => {
+    const abs = readRootBody(req, res);
+    if (!abs) return;
+    Object.assign(config, unpinRoot(config, abs));
+    store.save(config);
+    res.json(configPayload());
+  });
+
+  app.post('/api/roots/remove', (req, res) => {
+    const abs = readRootBody(req, res);
+    if (!abs) return;
+    Object.assign(config, removeRoot(config, abs));
+    store.save(config);
+    res.json(configPayload());
   });
 
   app.get('/api/tree', (req, res) => {
