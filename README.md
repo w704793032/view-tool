@@ -82,6 +82,7 @@ npm start                  # 等价于 node server.js
 - **左侧树形目录导航**,懒加载展开,目录排在文件前面(`zh-Hans-CN` 排序)
 - **右侧文件预览**:文本 / Markdown / 代码高亮 / 图片 / PDF 分页 / HTML(sandbox iframe)
 - **运行时在线切换根目录**:工具栏"修改"按钮 → 弹窗输入新路径 → 即时刷新,落盘到 `config.json`
+- **根目录历史快速切换**:工具栏"切换"按钮展示置顶路径和最近路径,点击即可切回常用目录
 - **路径防越权**:所有 API 路径经 `safeResolve` 校验,`..`、绝对路径注入、null 字节、空串一律拒绝
 - **大文件自动转下载**:超过 `maxPreviewSize`(默认 5 MB)的文本文件直接返回下载链接
 - **无构建步骤(源码模式)**;可选打包成 ~90 MB Windows / ~85 MB macOS 单文件
@@ -113,7 +114,7 @@ node server.js --root "D:\其他目录" --port 8080 --no-open
 node server.js --config ~/.view-tool.json
 ```
 
-优先级:**CLI** `--config` > `--root` / `--port` > 配置文件 > 内置默认值。
+优先级:**CLI** `--config` > `--root` / `--port` > 配置文件 > 内置默认值。`--root` 是临时启动覆盖,不会自动写入历史路径。
 
 ---
 
@@ -123,8 +124,11 @@ node server.js --config ~/.view-tool.json
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/api/config` | 读取当前根目录与配置版本。响应:`{ rootDir, version, port }` |
-| `POST` | `/api/config` | 修改根目录,body `{ "rootDir": "<绝对路径>" }`,落盘到 `config.json` |
+| `GET` | `/api/config` | 读取当前根目录、历史路径与配置版本。响应:`{ rootDir, recentRoots, pinnedRoots, version, port }` |
+| `POST` | `/api/config` | 修改根目录,body `{ "rootDir": "<绝对路径>" }`,成功后写入 `recentRoots` 并落盘到 `config.json` |
+| `POST` | `/api/roots/pin` | 置顶一个存在的根目录,body `{ "rootDir": "<绝对路径>" }` |
+| `POST` | `/api/roots/unpin` | 取消置顶根目录,body `{ "rootDir": "<绝对路径>" }` |
+| `POST` | `/api/roots/remove` | 从历史和置顶列表移除根目录,body `{ "rootDir": "<绝对路径>" }` |
 | `GET` | `/api/tree?path=<rel>` | 列出一层目录,返回 `{ current, entries:[{ name, type, size }] }` |
 | `GET` | `/api/file?path=<rel>` | 读取文件元数据 + 文本内容(若可预览),详见[支持的文件类型](#支持的文件类型) |
 | `GET` | `/api/raw?path=<rel>` | 流式下载文件原始字节(图片、PDF、二进制、大文件均用此端点) |
@@ -162,6 +166,8 @@ node server.js --config ~/.view-tool.json
 | 字段 | 类型 | 说明 | 默认 |
 |------|------|------|------|
 | `rootDir` | string | 浏览的根目录(绝对路径) | `process.cwd()` |
+| `recentRoots` | string[] | 最近成功通过 UI 切换过的根目录,最多 10 条 | `[]` |
+| `pinnedRoots` | string[] | 用户置顶的常用根目录 | `[]` |
 | `port` | number | HTTP 端口 | `3000` |
 | `maxPreviewSize` | number | 预览文件最大字节数,超过转下载 | `5242880`(5 MB) |
 | `version` | number | 配置 schema 版本 | `1` |
