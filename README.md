@@ -7,7 +7,7 @@
 - **路径安全**:所有请求经 `safeResolve` 校验,越权一律 403
 - **跨平台**:源码在 Windows / macOS / Linux 都能跑;二进制分发只覆盖 Windows + macOS
 
-版本:`0.2.0` · Node: `>= 22` · 测试:41 个用例全绿
+版本:`0.2.0` · Node: `>= 22` · 测试:58 个用例全绿
 
 ---
 
@@ -134,7 +134,7 @@ node server.js --config ~/.view-tool.json
 | `GET` | `/api/raw?path=<rel>` | 流式下载文件原始字节(图片、PDF、二进制、大文件均用此端点) |
 | `POST` | `/api/reveal` | 在系统文件管理器中打开 / 选中,body `{ "path": "<rel>" }`,响应 `{ ok, kind }` |
 
-`/api/tree`、`/api/file`、`/api/raw` 默认不显示以 `.` 开头的隐藏文件 / 目录,符号链接会被跳过(`buildTree` 显式 `isSymbolicLink()` 过滤)。
+`/api/tree` 会显示以 `.` 开头的文件 / 目录,符号链接仍会被跳过(`buildTree` 显式 `isSymbolicLink()` 过滤)。`/api/file`、`/api/raw` 可读取根目录内通过 `safeResolve` 校验的文件。
 
 ---
 
@@ -288,7 +288,7 @@ view-tool/
 │   ├── errors.js                # AppError + Codes + toResponse
 │   ├── path-guard.js            # safeResolve / isWithinRoot(防越权)
 │   ├── config-store.js          # 配置文件加载 + 原子写入
-│   ├── tree-builder.js          # 单层目录列表,过滤隐藏/符号链接,目录优先
+│   ├── tree-builder.js          # 单层目录列表,可配置隐藏项显示,过滤符号链接,目录优先
 │   ├── file-reader.js           # 元信息 + 文本读取 + 流下载 + MIME 表
 │   ├── reveal.js                # 平台特定 reveal 命令构造(纯函数)
 │   └── user-paths.js            # 跨平台用户数据目录 + isSea() 检测
@@ -304,7 +304,7 @@ view-tool/
 │   ├── build-sea.js             # esbuild + SEA + postject + 签名
 │   └── zip-artifact.js          # Windows → Compress-Archive;macOS → ditto
 │
-├── tests/                       # 41 个 node --test 用例
+├── tests/                       # 58 个 node --test 用例
 │   ├── path-guard.test.js       # 8 个
 │   ├── config-store.test.js     # 6 个
 │   ├── tree-builder.test.js     # 6 个
@@ -348,7 +348,7 @@ view-tool/
 npm test
 ```
 
-使用 Node 内置 `node --test`,无第三方测试框架。**当前 41 个用例,0 跳过 / 0 失败**,覆盖:
+使用 Node 内置 `node --test`,无第三方测试框架。**当前 58 个用例,0 跳过 / 0 失败**,覆盖:
 
 - `lib/path-guard.js`:8 个防越权用例(`..` / 绝对路径注入 / null 字节 / 空串等)
 - `lib/config-store.js`:6 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)

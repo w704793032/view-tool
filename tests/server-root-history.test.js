@@ -110,6 +110,25 @@ test('GET /api/config returns root history lists', async () => {
   }
 });
 
+test('GET /api/tree includes dotfiles and dot directories', async () => {
+  const root = tempDir('view-root-');
+  const configPath = path.join(tempDir('view-config-'), 'config.json');
+  fs.writeFileSync(path.join(root, '.env'), 'A=1');
+  fs.mkdirSync(path.join(root, '.config'));
+  fs.writeFileSync(configPath, JSON.stringify({ rootDir: root }));
+  const { child, baseUrl } = await startServer(configPath, root);
+  try {
+    const res = await fetch(`${baseUrl}/api/tree?path=.`);
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    const names = data.entries.map((entry) => entry.name);
+    assert.ok(names.includes('.env'));
+    assert.ok(names.includes('.config'));
+  } finally {
+    await stopServer(child);
+  }
+});
+
 test('POST /api/config records successful root switch in recentRoots', async () => {
   const rootA = tempDir('view-root-a-');
   const rootB = tempDir('view-root-b-');

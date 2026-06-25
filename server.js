@@ -168,7 +168,7 @@ function start() {
   app.get('/api/tree', (req, res) => {
     try {
       const requested = typeof req.query.path === 'string' ? req.query.path : '.';
-      const result = buildTree(rootDir, requested, { showHidden: false });
+      const result = buildTree(rootDir, requested, { showHidden: true });
       res.json(result);
     } catch (err) {
       const r = toResponse(err);
