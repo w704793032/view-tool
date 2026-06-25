@@ -12,6 +12,29 @@ function tmpConfigPath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cstest-')), 'config.json');
 }
 
+test('load old config supplies empty root history lists', () => {
+  const p = tmpConfigPath();
+  fs.writeFileSync(p, JSON.stringify({ rootDir: 'D:\\y', port: 4000 }));
+  const store = new ConfigStore(p);
+  const cfg = store.load();
+
+  assert.deepStrictEqual(cfg.recentRoots, []);
+  assert.deepStrictEqual(cfg.pinnedRoots, []);
+});
+
+test('load normalizes root history lists from config file', () => {
+  const p = tmpConfigPath();
+  fs.writeFileSync(p, JSON.stringify({
+    recentRoots: ['a', 'a', '', 12],
+    pinnedRoots: ['b', 'b', null],
+  }));
+  const store = new ConfigStore(p);
+  const cfg = store.load();
+
+  assert.deepStrictEqual(cfg.recentRoots, [path.resolve('a')]);
+  assert.deepStrictEqual(cfg.pinnedRoots, [path.resolve('b')]);
+});
+
 test('load 缺失文件时返回默认值', () => {
   const p = tmpConfigPath();
   const store = new ConfigStore(p, { rootDir: 'D:\\x' });
