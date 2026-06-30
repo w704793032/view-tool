@@ -7,7 +7,7 @@
 - **路径安全**:所有请求经 `safeResolve` 校验,越权一律 403
 - **跨平台**:源码在 Windows / macOS / Linux 都能跑;二进制分发只覆盖 Windows + macOS
 
-版本:`0.2.0` · Node: `>= 22` · 测试:65 个用例全绿
+版本:`0.2.0` · Node: `>= 22` · 测试:73 个用例全绿
 
 ---
 
@@ -79,7 +79,7 @@ npm start                  # 等价于 node server.js
 
 ## 特性
 
-- **左侧树形目录导航**,懒加载展开,目录排在文件前面(`zh-Hans-CN` 排序)
+- **左侧树形目录导航**,懒加载展开,目录排在文件前面(`zh-Hans-CN` 排序),每 5 秒自动刷新且保留展开状态
 - **右侧文件预览**:文本 / Markdown / 代码高亮 / 图片 / PDF 分页 / HTML(sandbox iframe)
 - **运行时在线切换根目录**:工具栏"修改"按钮 → 弹窗输入新路径 → 即时刷新,落盘到 `config.json`
 - **根目录历史快速切换**:工具栏"切换"按钮展示置顶路径和最近路径,点击即可切回常用目录
@@ -297,6 +297,7 @@ view-tool/
 │   ├── index.html               # 工具栏 + 目录树 + 预览 + 右键菜单 DOM
 │   ├── app.js                   # 前端逻辑(原生 ESM,无框架)
 │   ├── tree-title.mjs           # 目录树悬停标题与大小 / 时间格式化
+│   ├── tree-refresh.mjs         # 目录树自动刷新间隔与路径规划
 │   ├── styles.css               # 全部样式
 │   └── vendor/                  # 本地化的 marked / highlight.js / pdf.js
 │
@@ -305,14 +306,16 @@ view-tool/
 │   ├── build-sea.js             # esbuild + SEA + postject + 签名
 │   └── zip-artifact.js          # Windows → Compress-Archive;macOS → ditto
 │
-├── tests/                       # 65 个 node --test 用例
+├── tests/                       # 73 个 node --test 用例
 │   ├── path-guard.test.js       # 8 个
 │   ├── config-store.test.js     # 6 个
 │   ├── tree-builder.test.js     # 7 个
 │   ├── file-reader.test.js      # 8 个
 │   ├── reveal.test.js           # 9 个(win32 + darwin + linux + 异常)
 │   ├── html-preview.test.js     # 4 个(sandbox + className 回归保护)
-│   └── tree-title.test.mjs      # 6 个(目录树悬停标题格式)
+│   ├── tree-title.test.mjs      # 6 个(目录树悬停标题格式)
+│   ├── tree-refresh.test.mjs    # 4 个(自动刷新间隔与路径规划)
+│   └── tree-auto-refresh-ui.test.js # 4 个(自动刷新前端接线)
 │
 └── (gitignore)
     ├── node_modules/            # 依赖
@@ -350,7 +353,7 @@ view-tool/
 npm test
 ```
 
-使用 Node 内置 `node --test`,无第三方测试框架。**当前 65 个用例,0 跳过 / 0 失败**,覆盖:
+使用 Node 内置 `node --test`,无第三方测试框架。**当前 73 个用例,0 跳过 / 0 失败**,覆盖:
 
 - `lib/path-guard.js`:8 个防越权用例(`..` / 绝对路径注入 / null 字节 / 空串等)
 - `lib/config-store.js`:6 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)
@@ -359,6 +362,8 @@ npm test
 - `lib/reveal.js`:9 个跨平台 reveal 用例(3 个 win32 + 2 个 darwin + 2 个 linux + 2 个异常)
 - `tests/html-preview.test.js`:4 个 HTML 预览样式 / sandbox 回归保护
 - `tests/tree-title.test.mjs`:6 个目录树悬停标题格式用例(修改时间 / 文件大小 / 回退行为)
+- `tests/tree-refresh.test.mjs`:4 个目录树自动刷新路径规划用例
+- `tests/tree-auto-refresh-ui.test.js`:4 个目录树自动刷新前端接线用例
 
 新增模块时请保持"先写测试再写实现"的节奏,确保总用例数同步更新。
 

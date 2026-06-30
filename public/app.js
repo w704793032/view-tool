@@ -1,4 +1,8 @@
 import { buildTreeTitle, formatBytes } from './tree-title.mjs';
+import {
+  TREE_REFRESH_INTERVAL_MS,
+  getTreeRefreshPaths,
+} from './tree-refresh.mjs';
 
 // ============== 状态 ==============
 const state = {
@@ -9,6 +13,8 @@ const state = {
   selectedFile: null,
   expandedDirs: new Set(['.']),
   jsonLargeConfirmed: new Set(),
+  treeRefreshTimer: null,
+  treeRefreshInFlight: false,
 };
 
 // ============== 工具 ==============
@@ -422,7 +428,7 @@ async function fetchTree(path) {
   return apiGet(`/api/tree?path=${encodeURIComponent(path)}`);
 }
 
-function renderNode(parentPath, name, info, depth) {
+function renderNode(parentPath, name, info, depth, options = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'tree-node';
 
@@ -482,7 +488,9 @@ function renderNode(parentPath, name, info, depth) {
     childrenWrap.className = 'tree-children';
     childrenWrap.dataset.path = info.fullPath;
     wrap.appendChild(childrenWrap);
-    loadChildren(info.fullPath, childrenWrap);
+    if (options.autoLoadChildren !== false) {
+      loadChildren(info.fullPath, childrenWrap, options);
+    }
   }
 
   return wrap;
@@ -509,38 +517,81 @@ function cssEscape(s) {
   return s.replace(/(["\\])/g, '\\$1');
 }
 
-async function loadChildren(fullPath, container) {
-  container.innerHTML = '<div class="tree-empty">加载中…</div>';
+function renderEntries(parentPath, entries, container, options = {}) {
+  container.innerHTML = '';
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="tree-empty">（空目录）</div>';
+    return;
+  }
+  for (const entry of entries) {
+    const full = joinPath(parentPath, entry.name);
+    const info = { ...entry, fullPath: full };
+    container.appendChild(renderNode(parentPath, entry.name, info, 0, options));
+  }
+}
+
+async function loadChildren(fullPath, container, options = {}) {
+  const silent = options.silent === true;
+  if (!silent) container.innerHTML = '<div class="tree-empty">加载中…</div>';
   try {
     const data = await fetchTree(fullPath);
-    container.innerHTML = '';
-    if (data.entries.length === 0) {
-      container.innerHTML = '<div class="tree-empty">（空目录）</div>';
+    renderEntries(fullPath, data.entries, container, options);
+  } catch (err) {
+    if (silent && container.childElementCount > 0) {
+      console.warn(`刷新目录失败：${fullPath}`, err);
       return;
     }
-    for (const entry of data.entries) {
-      const full = joinPath(fullPath, entry.name);
-      const info = { ...entry, fullPath: full };
-      container.appendChild(renderNode(fullPath, entry.name, info, 0));
-    }
-  } catch (err) {
     container.innerHTML = `<div class="tree-empty">加载失败：${escapeHtml(err.message)}</div>`;
   }
 }
 
-async function renderTree() {
+async function renderTree(options = {}) {
   const root = document.getElementById('tree');
-  root.innerHTML = '';
-  const data = await fetchTree('.');
-  if (data.entries.length === 0) {
-    root.innerHTML = '<div class="tree-empty">（空目录）</div>';
-    return;
+  const silent = options.silent === true;
+  if (!silent) root.innerHTML = '';
+  try {
+    const data = await fetchTree('.');
+    renderEntries('.', data.entries, root, options);
+    return true;
+  } catch (err) {
+    if (silent) {
+      console.warn('刷新目录树失败', err);
+      return false;
+    }
+    throw err;
   }
-  for (const entry of data.entries) {
-    const full = joinPath('.', entry.name);
-    const info = { ...entry, fullPath: full };
-    root.appendChild(renderNode('.', entry.name, info, 0));
+}
+
+async function refreshVisibleChildren(paths) {
+  for (const fullPath of paths) {
+    if (fullPath === '.') continue;
+    const container = document.querySelector(`.tree-children[data-path="${cssEscape(fullPath)}"]`);
+    if (!container) continue;
+    await loadChildren(fullPath, container, {
+      silent: true,
+      autoLoadChildren: false,
+    });
   }
+}
+
+async function refreshTree() {
+  if (state.treeRefreshInFlight) return;
+  state.treeRefreshInFlight = true;
+  try {
+    const paths = getTreeRefreshPaths(state.expandedDirs);
+    const ok = await renderTree({
+      silent: true,
+      autoLoadChildren: false,
+    });
+    if (ok) await refreshVisibleChildren(paths);
+  } finally {
+    state.treeRefreshInFlight = false;
+  }
+}
+
+function setupTreeAutoRefresh() {
+  if (state.treeRefreshTimer) return;
+  state.treeRefreshTimer = setInterval(() => refreshTree(), TREE_REFRESH_INTERVAL_MS);
 }
 
 // ============== 文件预览 ==============
@@ -891,6 +942,7 @@ async function main() {
     await loadConfig();
     await renderTree();
     await renderBreadcrumb();
+    setupTreeAutoRefresh();
   } catch (err) {
     showError(`初始化失败：${err.message}`);
   }
