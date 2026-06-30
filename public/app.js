@@ -3,6 +3,11 @@ import {
   TREE_REFRESH_INTERVAL_MS,
   getTreeRefreshPaths,
 } from './tree-refresh.mjs';
+import {
+  canReuseTreeNode,
+  getDirectTreeNodes,
+  toTreeEntryInfo,
+} from './tree-reconcile.mjs';
 
 // ============== 状态 ==============
 const state = {
@@ -431,6 +436,8 @@ async function fetchTree(path) {
 function renderNode(parentPath, name, info, depth, options = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'tree-node';
+  wrap.dataset.path = info.fullPath;
+  wrap.dataset.type = info.type;
 
   const row = document.createElement('div');
   row.className = 'tree-row';
@@ -517,7 +524,133 @@ function cssEscape(s) {
   return s.replace(/(["\\])/g, '\\$1');
 }
 
+function directChildByClass(el, className) {
+  return Array.from(el.children).find((child) => child.classList.contains(className));
+}
+
+function treeRowForNode(node) {
+  return directChildByClass(node, 'tree-row');
+}
+
+function treeInfoForNode(node) {
+  const row = treeRowForNode(node);
+  return {
+    fullPath: row?.dataset.path,
+    type: row?.dataset.type,
+  };
+}
+
+function setTextIfChanged(el, value) {
+  if (el && el.textContent !== value) el.textContent = value;
+}
+
+function syncTreeRowSize(row, info) {
+  let sizeEl = row.querySelector('.tree-count');
+  if (info.type === 'file' && info.size != null) {
+    if (!sizeEl) {
+      sizeEl = document.createElement('span');
+      sizeEl.className = 'tree-count';
+      row.append(sizeEl);
+    }
+    setTextIfChanged(sizeEl, formatBytes(info.size));
+    return;
+  }
+  if (sizeEl) sizeEl.remove();
+}
+
+function updateTreeNode(node, parentPath, name, info, options = {}) {
+  const row = treeRowForNode(node);
+  if (!row) return renderNode(parentPath, name, info, 0, options);
+
+  node.dataset.path = info.fullPath;
+  node.dataset.type = info.type;
+  row.dataset.path = info.fullPath;
+  row.dataset.type = info.type;
+
+  const title = buildTreeTitle(name, info);
+  if (row.title !== title) row.title = title;
+
+  const toggle = row.querySelector('.tree-toggle');
+  const icon = row.querySelector('.tree-icon');
+  const label = row.querySelector('.tree-name');
+  const expanded = info.type === 'dir' && state.expandedDirs.has(info.fullPath);
+
+  setTextIfChanged(toggle, info.type === 'dir' ? (expanded ? '▼' : '▶') : '');
+  setTextIfChanged(icon, info.type === 'dir' ? '📁' : '📄');
+  setTextIfChanged(label, name);
+  syncTreeRowSize(row, info);
+
+  row.classList.toggle('expanded', expanded);
+  row.classList.toggle('selected', state.selectedFile === info.fullPath);
+
+  const childrenWrap = directChildByClass(node, 'tree-children');
+  if (expanded && !childrenWrap) {
+    const nextChildren = document.createElement('div');
+    nextChildren.className = 'tree-children';
+    nextChildren.dataset.path = info.fullPath;
+    node.appendChild(nextChildren);
+    if (options.autoLoadChildren !== false) {
+      loadChildren(info.fullPath, nextChildren, options);
+    }
+  } else if (!expanded && childrenWrap) {
+    childrenWrap.remove();
+  }
+
+  return node;
+}
+
+function placeNode(container, marker, node) {
+  const target = marker ? marker.nextSibling : container.firstChild;
+  if (node !== target) container.insertBefore(node, target);
+  return node;
+}
+
+function reconcileEntries(parentPath, entries, container, options = {}) {
+  const existingNodes = getDirectTreeNodes(container);
+  const existingByPath = new Map();
+  for (const node of existingNodes) {
+    const info = treeInfoForNode(node);
+    if (info.fullPath) existingByPath.set(info.fullPath, node);
+  }
+
+  const emptyEl = directChildByClass(container, 'tree-empty');
+  if (entries.length === 0) {
+    for (const node of existingNodes) node.remove();
+    if (!emptyEl) {
+      const nextEmpty = document.createElement('div');
+      nextEmpty.className = 'tree-empty';
+      nextEmpty.textContent = '（空目录）';
+      container.appendChild(nextEmpty);
+    }
+    return;
+  }
+  if (emptyEl) emptyEl.remove();
+
+  const used = new Set();
+  let marker = null;
+  for (const entry of entries) {
+    const info = toTreeEntryInfo(parentPath, entry);
+    const existingNode = existingByPath.get(info.fullPath);
+    const existingInfo = existingNode ? treeInfoForNode(existingNode) : null;
+    const nextNode = canReuseTreeNode(existingInfo, info)
+      ? updateTreeNode(existingNode, parentPath, entry.name, info, options)
+      : renderNode(parentPath, entry.name, info, 0, options);
+
+    marker = placeNode(container, marker, nextNode);
+    used.add(nextNode);
+  }
+
+  for (const node of existingNodes) {
+    if (!used.has(node)) node.remove();
+  }
+}
+
 function renderEntries(parentPath, entries, container, options = {}) {
+  if (options.reconcile === true) {
+    reconcileEntries(parentPath, entries, container, options);
+    return;
+  }
+
   container.innerHTML = '';
   if (entries.length === 0) {
     container.innerHTML = '<div class="tree-empty">（空目录）</div>';
@@ -570,6 +703,7 @@ async function refreshVisibleChildren(paths) {
     await loadChildren(fullPath, container, {
       silent: true,
       autoLoadChildren: false,
+      reconcile: true,
     });
   }
 }
@@ -582,6 +716,7 @@ async function refreshTree() {
     const ok = await renderTree({
       silent: true,
       autoLoadChildren: false,
+      reconcile: true,
     });
     if (ok) await refreshVisibleChildren(paths);
   } finally {
