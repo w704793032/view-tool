@@ -235,7 +235,7 @@ node server.js --config ~/.view-tool.json
 
 | `type` | 触发扩展名 | 前端表现 |
 |--------|----------|----------|
-| `text` | `.md` `.markdown` `.json` `.html` `.htm` `.xml` `.css` `.js` `.mjs` `.ts` `.py` `.sh` `.ps1` `.yml` `.yaml` `.csv` `.txt` `.log` | `<pre>` + highlight.js(MD 还过 marked) |
+| `text` | `.md` `.markdown` `.json` `.html` `.htm` `.xml` `.css` `.js` `.mjs` `.cjs` `.jsx` `.ts` `.mts` `.cts` `.tsx` `.py` `.sh` `.bash` `.zsh` `.ps1` `.yml` `.yaml` `.toml` `.ini` `.env` `.properties` `.conf` `.csv` `.txt` `.log` | Markdown / JSON / HTML 专用预览，其余文本走带语言标签的代码预览 + highlight.js |
 | `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` | `<img>` 直接渲染,`/api/raw` 提供字节 |
 | `pdf` | `.pdf` | pdf.js 分页渲染,带上一页 / 下一页 |
 | `binary-too-large` | 任何文件 `size > maxPreviewSize` | 灰色卡片 + 下载按钮 |

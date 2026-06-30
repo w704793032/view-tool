@@ -1,4 +1,6 @@
 import { buildTreeTitle, formatBytes } from './tree-title.mjs';
+import { renderMarkdownPreviewHtml } from './markdown-preview.mjs';
+import { renderCodePreviewHtml } from './text-preview.mjs';
 import {
   TREE_REFRESH_INTERVAL_MS,
   getTreeRefreshPaths,
@@ -788,7 +790,7 @@ function renderText(container, meta, filePath) {
     div.className = 'markdown-body';
     const raw = meta.content;
     const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
-    const html = window.marked.parse(raw);
+    const html = renderMarkdownPreviewHtml(raw, (markdown) => window.marked.parse(markdown));
     div.innerHTML = html;
     rewriteMdImages(div, dir);
     container.appendChild(div);
@@ -843,11 +845,12 @@ function renderText(container, meta, filePath) {
     return;
   }
 
-  const pre = document.createElement('pre');
-  pre.className = 'text-preview';
-  pre.textContent = meta.content;
-  container.appendChild(pre);
-  if (window.hljs) window.hljs.highlightElement(pre);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = renderCodePreviewHtml(filePath, meta.content);
+  container.appendChild(wrap.firstElementChild);
+  if (window.hljs) {
+    container.querySelectorAll('.code-preview pre code').forEach((el) => window.hljs.highlightElement(el));
+  }
 }
 
 function rewriteMdImages(container, mdDir) {

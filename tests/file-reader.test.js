@@ -13,6 +13,8 @@ function makeFiles() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frtest-'));
   fs.writeFileSync(path.join(root, 'a.md'), '# title\n', 'utf8');
   fs.writeFileSync(path.join(root, 'a.json'), '{"k":1}', 'utf8');
+  fs.writeFileSync(path.join(root, 'a.toml'), 'name = "view-tool"\n', 'utf8');
+  fs.writeFileSync(path.join(root, '.env'), 'VIEW_TOOL=1\n', 'utf8');
   fs.writeFileSync(path.join(root, 'a.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   fs.writeFileSync(path.join(root, 'a.pdf'), Buffer.from('%PDF-1.4'));
   fs.writeFileSync(path.join(root, 'a.pptx'), Buffer.from('pptx-mock'));
@@ -90,6 +92,8 @@ test('readFileMeta MIME 推断覆盖常见类型', () => {
     const cases = [
       ['a.md', 'text/markdown'],
       ['a.json', 'application/json'],
+      ['a.toml', 'text/toml'],
+      ['.env', 'text/plain'],
       ['a.png', 'image/png'],
       ['a.pdf', 'application/pdf'],
     ];
