@@ -38,6 +38,19 @@ test('buildTree 标记 type=dir / type=file', () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('buildTree includes modified time for files and directories', () => {
+  const root = makeTree();
+  try {
+    const result = buildTree(root, '.', { showHidden: false });
+    const sub = result.entries.find((e) => e.name === 'sub');
+    const file = result.entries.find((e) => e.name === 'a.txt');
+    assert.strictEqual(typeof sub.mtimeMs, 'number');
+    assert.strictEqual(typeof file.mtimeMs, 'number');
+    assert.ok(sub.mtimeMs > 0);
+    assert.ok(file.mtimeMs > 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('buildTree 默认不显示隐藏文件', () => {
   const root = makeTree();
   try {
