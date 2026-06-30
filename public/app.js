@@ -1,3 +1,5 @@
+import { buildTreeTitle, formatBytes } from './tree-title.mjs';
+
 // ============== 状态 ==============
 const state = {
   rootDir: '',
@@ -34,12 +36,6 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function formatBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function joinPath(base, child) {
@@ -435,7 +431,7 @@ function renderNode(parentPath, name, info, depth) {
   row.dataset.path = info.fullPath;
   row.dataset.type = info.type;
   // 悬停时显示完整名称，避免被 ellipsis 截断后看不全
-  row.title = name;
+  row.title = buildTreeTitle(name, info);
 
   const toggle = document.createElement('span');
   toggle.className = 'tree-toggle';

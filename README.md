@@ -7,7 +7,7 @@
 - **路径安全**:所有请求经 `safeResolve` 校验,越权一律 403
 - **跨平台**:源码在 Windows / macOS / Linux 都能跑;二进制分发只覆盖 Windows + macOS
 
-版本:`0.2.0` · Node: `>= 22` · 测试:58 个用例全绿
+版本:`0.2.0` · Node: `>= 22` · 测试:65 个用例全绿
 
 ---
 
@@ -129,12 +129,12 @@ node server.js --config ~/.view-tool.json
 | `POST` | `/api/roots/pin` | 置顶一个存在的根目录,body `{ "rootDir": "<绝对路径>" }` |
 | `POST` | `/api/roots/unpin` | 取消置顶根目录,body `{ "rootDir": "<绝对路径>" }` |
 | `POST` | `/api/roots/remove` | 从历史和置顶列表移除根目录,body `{ "rootDir": "<绝对路径>" }` |
-| `GET` | `/api/tree?path=<rel>` | 列出一层目录,返回 `{ current, entries:[{ name, type, size }] }` |
+| `GET` | `/api/tree?path=<rel>` | 列出一层目录,返回 `{ current, entries:[{ name, type, size, mtimeMs }] }` |
 | `GET` | `/api/file?path=<rel>` | 读取文件元数据 + 文本内容(若可预览),详见[支持的文件类型](#支持的文件类型) |
 | `GET` | `/api/raw?path=<rel>` | 流式下载文件原始字节(图片、PDF、二进制、大文件均用此端点) |
 | `POST` | `/api/reveal` | 在系统文件管理器中打开 / 选中,body `{ "path": "<rel>" }`,响应 `{ ok, kind }` |
 
-`/api/tree` 会显示以 `.` 开头的文件 / 目录,符号链接仍会被跳过(`buildTree` 显式 `isSymbolicLink()` 过滤)。`/api/file`、`/api/raw` 可读取根目录内通过 `safeResolve` 校验的文件。
+`/api/tree` 会显示以 `.` 开头的文件 / 目录,符号链接仍会被跳过(`buildTree` 显式 `isSymbolicLink()` 过滤)。`mtimeMs` 是该文件或目录自身最后修改时间的 Unix 毫秒时间戳。`/api/file`、`/api/raw` 可读取根目录内通过 `safeResolve` 校验的文件。
 
 ---
 
@@ -296,6 +296,7 @@ view-tool/
 ├── public/
 │   ├── index.html               # 工具栏 + 目录树 + 预览 + 右键菜单 DOM
 │   ├── app.js                   # 前端逻辑(原生 ESM,无框架)
+│   ├── tree-title.mjs           # 目录树悬停标题与大小 / 时间格式化
 │   ├── styles.css               # 全部样式
 │   └── vendor/                  # 本地化的 marked / highlight.js / pdf.js
 │
@@ -304,13 +305,14 @@ view-tool/
 │   ├── build-sea.js             # esbuild + SEA + postject + 签名
 │   └── zip-artifact.js          # Windows → Compress-Archive;macOS → ditto
 │
-├── tests/                       # 58 个 node --test 用例
+├── tests/                       # 65 个 node --test 用例
 │   ├── path-guard.test.js       # 8 个
 │   ├── config-store.test.js     # 6 个
-│   ├── tree-builder.test.js     # 6 个
+│   ├── tree-builder.test.js     # 7 个
 │   ├── file-reader.test.js      # 8 个
 │   ├── reveal.test.js           # 9 个(win32 + darwin + linux + 异常)
-│   └── html-preview.test.js     # 4 个(sandbox + className 回归保护)
+│   ├── html-preview.test.js     # 4 个(sandbox + className 回归保护)
+│   └── tree-title.test.mjs      # 6 个(目录树悬停标题格式)
 │
 └── (gitignore)
     ├── node_modules/            # 依赖
@@ -348,14 +350,15 @@ view-tool/
 npm test
 ```
 
-使用 Node 内置 `node --test`,无第三方测试框架。**当前 58 个用例,0 跳过 / 0 失败**,覆盖:
+使用 Node 内置 `node --test`,无第三方测试框架。**当前 65 个用例,0 跳过 / 0 失败**,覆盖:
 
 - `lib/path-guard.js`:8 个防越权用例(`..` / 绝对路径注入 / null 字节 / 空串等)
 - `lib/config-store.js`:6 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)
-- `lib/tree-builder.js`:6 个目录树用例(类型标记 / 隐藏过滤 / 排序 / 空目录)
+- `lib/tree-builder.js`:7 个目录树用例(类型标记 / 修改时间 / 隐藏过滤 / 排序 / 空目录)
 - `lib/file-reader.js`:8 个文件读取用例(MIME / 文本 / 图片 / PDF / 二进制 / 超大 / 目录)
 - `lib/reveal.js`:9 个跨平台 reveal 用例(3 个 win32 + 2 个 darwin + 2 个 linux + 2 个异常)
 - `tests/html-preview.test.js`:4 个 HTML 预览样式 / sandbox 回归保护
+- `tests/tree-title.test.mjs`:6 个目录树悬停标题格式用例(修改时间 / 文件大小 / 回退行为)
 
 新增模块时请保持"先写测试再写实现"的节奏,确保总用例数同步更新。
 
