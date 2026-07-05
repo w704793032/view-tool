@@ -20,6 +20,7 @@ const state = {
   selectedFile: null,
   expandedDirs: new Set(['.']),
   jsonLargeConfirmed: new Set(),
+  previewRequestId: 0,
   treeRefreshTimer: null,
   treeRefreshInFlight: false,
 };
@@ -477,10 +478,10 @@ function renderNode(parentPath, name, info, depth, options = {}) {
     row.classList.add('selected');
   }
 
-  row.addEventListener('click', (ev) => {
+  row.addEventListener('click', async (ev) => {
     ev.stopPropagation();
     if (info.type === 'dir') {
-      toggleDir(info.fullPath, row);
+      await selectDirectory(info.fullPath, row);
     } else {
       selectFile(info.fullPath, row);
     }
@@ -732,6 +733,87 @@ function setupTreeAutoRefresh() {
 }
 
 // ============== 文件预览 ==============
+const DIRECTORY_TEXT_PREVIEW_EXTS = new Set([
+  '.md', '.markdown', '.json', '.html', '.htm', '.xml', '.css',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx',
+  '.py', '.sh', '.bash', '.zsh', '.ps1', '.yml', '.yaml', '.toml',
+  '.ini', '.env', '.properties', '.conf', '.csv', '.txt', '.log',
+]);
+const DIRECTORY_MEDIA_PREVIEW_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf',
+]);
+const DIRECTORY_PREVIEW_EXTS = new Set([
+  ...DIRECTORY_TEXT_PREVIEW_EXTS,
+  ...DIRECTORY_MEDIA_PREVIEW_EXTS,
+]);
+
+function filePreviewExt(fileName) {
+  const lower = String(fileName).split(/[\\/]/).pop().toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  const ext = dot > 0 ? lower.slice(dot) : '';
+  if (ext) return ext;
+  return DIRECTORY_PREVIEW_EXTS.has(lower) ? lower : '';
+}
+
+function looksDirectoryPreviewable(entry) {
+  return entry.type === 'file' && DIRECTORY_PREVIEW_EXTS.has(filePreviewExt(entry.name));
+}
+
+function isPreviewableMeta(meta) {
+  return meta.type === 'text' || meta.type === 'image' || meta.type === 'pdf';
+}
+
+function previewTypeLabel(meta, filePath) {
+  if (meta.type === 'image') return '图片';
+  if (meta.type === 'pdf') return 'PDF';
+  const ext = filePreviewExt(filePath);
+  if (ext === '.md' || ext === '.markdown') return 'Markdown';
+  if (ext === '.html' || ext === '.htm') return 'HTML';
+  if (ext === '.json') return 'JSON';
+  return '文本';
+}
+
+function previewKind(meta, filePath) {
+  if (meta.type === 'image') return 'image';
+  if (meta.type === 'pdf') return 'pdf';
+  const ext = filePreviewExt(filePath);
+  if (ext === '.html' || ext === '.htm') return 'html';
+  if (ext === '.md' || ext === '.markdown') return 'markdown';
+  if (ext === '.json') return 'json';
+  return 'text';
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function treeRowByPath(path) {
+  return document.querySelector(`.tree-row[data-path="${cssEscape(path)}"]`);
+}
+
+async function selectDirectory(dirPath, rowEl) {
+  state.selectedFile = dirPath;
+  state.currentPath = dirPath;
+  document.querySelectorAll('.tree-row.selected').forEach((el) => el.classList.remove('selected'));
+  if (rowEl) rowEl.classList.add('selected');
+  await renderBreadcrumb();
+  await Promise.all([
+    rowEl ? toggleDir(dirPath, rowEl) : Promise.resolve(),
+    renderDirectoryPreview(dirPath),
+  ]);
+}
+
 async function selectFile(filePath, rowEl) {
   state.selectedFile = filePath;
   state.currentPath = filePath;
@@ -743,9 +825,11 @@ async function selectFile(filePath, rowEl) {
 
 async function renderPreview(filePath) {
   const main = document.getElementById('preview');
+  const requestId = ++state.previewRequestId;
   main.innerHTML = '<div class="placeholder">加载中…</div>';
   try {
     const meta = await apiGet(`/api/file?path=${encodeURIComponent(filePath)}`);
+    if (requestId !== state.previewRequestId) return;
     main.innerHTML = '';
     switch (meta.type) {
       case 'text': renderText(main, meta, filePath); break;
@@ -756,29 +840,256 @@ async function renderPreview(filePath) {
       default: main.innerHTML = `<div class="error-card">未知文件类型：${meta.type}</div>`;
     }
   } catch (err) {
+    if (requestId !== state.previewRequestId) return;
     showError(`预览失败：${err.message}`);
   }
 }
 
 async function renderDirectoryPreview(dirPath) {
   const main = document.getElementById('preview');
+  const requestId = ++state.previewRequestId;
   main.innerHTML = '<div class="placeholder">加载中…</div>';
   try {
     const data = await fetchTree(dirPath);
-    const card = document.createElement('div');
-    card.className = 'binary-card';
+    if (requestId !== state.previewRequestId) return;
     const dirs = data.entries.filter((e) => e.type === 'dir');
     const files = data.entries.filter((e) => e.type === 'file');
-    card.innerHTML = `
-      <div class="icon">📁</div>
-      <div class="name">${escapeHtml(data.current)}</div>
-      <div class="meta">${dirs.length} 个目录 · ${files.length} 个文件</div>
-      <div class="meta" style="max-width: 480px; text-align: left;">${escapeHtml(dirs.map((d) => d.name).join(' · '))}</div>
-    `;
+    const candidates = files.filter(looksDirectoryPreviewable);
+    const previewResults = await mapWithConcurrency(candidates, 6, async (entry) => {
+      const filePath = joinPath(dirPath, entry.name);
+      try {
+        const meta = await apiGet(`/api/file?path=${encodeURIComponent(filePath)}`);
+        return { entry, filePath, meta };
+      } catch (err) {
+        return { entry, filePath, error: err };
+      }
+    });
+    if (requestId !== state.previewRequestId) return;
+
+    const previewItems = previewResults.filter((item) => item.meta && isPreviewableMeta(item.meta));
+    const failedCount = previewResults.filter((item) => item.error).length;
+    const skippedCount = files.length - previewItems.length - failedCount;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'directory-preview';
+
+    const header = document.createElement('div');
+    header.className = 'directory-preview-header';
+
+    const titleWrap = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'directory-preview-title';
+    title.textContent = data.current === '.' ? rootLeaf(state.rootDir) : data.current.split('/').pop();
+    const path = document.createElement('div');
+    path.className = 'directory-preview-path';
+    path.textContent = data.current;
+    titleWrap.append(title, path);
+
+    const meta = document.createElement('div');
+    meta.className = 'directory-preview-meta';
+    const skippedText = skippedCount > 0 ? `，${skippedCount} 个不可预览` : '';
+    const failedText = failedCount > 0 ? `，${failedCount} 个读取失败` : '';
+    meta.textContent = `${dirs.length} 个文件夹，${files.length} 个文件，${previewItems.length} 个可预览${skippedText}${failedText}`;
+
+    header.append(titleWrap, meta);
+    wrap.appendChild(header);
+
+    if (previewItems.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'directory-preview-empty';
+      empty.innerHTML = `
+        <div class="icon">📁</div>
+        <div class="name">${escapeHtml(data.current)}</div>
+        <div class="meta">当前第一层没有可预览文件</div>
+      `;
+      wrap.appendChild(empty);
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'directory-preview-grid';
+      for (const item of previewItems) {
+        grid.appendChild(renderDirectoryPreviewTile(item));
+      }
+      wrap.appendChild(grid);
+    }
+
     main.innerHTML = '';
-    main.appendChild(card);
+    main.appendChild(wrap);
   } catch (err) {
+    if (requestId !== state.previewRequestId) return;
     showError(`加载目录失败：${err.message}`);
+  }
+}
+
+function renderDirectoryPreviewTile(item) {
+  const { entry, filePath, meta } = item;
+  const kind = previewKind(meta, filePath);
+  const tile = document.createElement('article');
+  tile.className = `directory-preview-tile type-${meta.type} kind-${kind}`;
+  tile.tabIndex = 0;
+  tile.setAttribute('role', 'button');
+  tile.title = entry.name;
+
+  const header = document.createElement('div');
+  header.className = 'directory-preview-tile-header';
+  const name = document.createElement('div');
+  name.className = 'directory-preview-file-name';
+  name.textContent = entry.name;
+  const detail = document.createElement('div');
+  detail.className = 'directory-preview-file-detail';
+  detail.textContent = `${previewTypeLabel(meta, filePath)} · ${formatBytes(meta.size)}`;
+  header.append(name, detail);
+
+  const body = document.createElement('div');
+  body.className = 'directory-preview-body';
+  renderDirectoryTileBody(body, meta, filePath);
+
+  const open = () => selectFile(filePath, treeRowByPath(filePath));
+  tile.addEventListener('click', open);
+  tile.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    ev.preventDefault();
+    open();
+  });
+
+  tile.append(header, body);
+  return tile;
+}
+
+function renderDirectoryTileBody(container, meta, filePath) {
+  if (meta.type === 'image') {
+    const img = document.createElement('img');
+    img.className = 'directory-preview-image';
+    img.src = meta.downloadUrl;
+    img.alt = meta.name;
+    img.loading = 'lazy';
+    container.appendChild(img);
+    return;
+  }
+
+  if (meta.type === 'pdf') {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'directory-preview-pdf';
+    container.appendChild(canvas);
+    renderPdfThumbnail(canvas, meta.downloadUrl);
+    return;
+  }
+
+  renderTextThumbnail(container, meta, filePath);
+}
+
+function renderTextThumbnail(container, meta, filePath) {
+  const ext = filePreviewExt(filePath);
+  if (ext === '.md' || ext === '.markdown') {
+    const div = document.createElement('div');
+    div.className = 'directory-preview-markdown';
+    const raw = meta.content.length > 20000 ? meta.content.slice(0, 20000) : meta.content;
+    div.innerHTML = renderMarkdownPreviewHtml(raw, (markdown) => window.marked.parse(markdown));
+    const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+    rewriteMdImages(div, dir);
+    container.appendChild(div);
+    if (window.hljs) {
+      div.querySelectorAll('pre code').forEach((el) => window.hljs.highlightElement(el));
+    }
+    return;
+  }
+
+  if (ext === '.html' || ext === '.htm') {
+    renderHtmlThumbnail(container, meta, filePath);
+    return;
+  }
+
+  const pre = document.createElement('pre');
+  pre.className = 'directory-preview-text';
+  let content = meta.content;
+  if (ext === '.json') {
+    try {
+      content = JSON.stringify(JSON.parse(meta.content), null, 2);
+    } catch (_) {
+      content = meta.content;
+    }
+  }
+  pre.textContent = content.length > 12000 ? `${content.slice(0, 12000)}\n...` : content;
+  container.appendChild(pre);
+}
+
+function getHtmlPreviewSize(html) {
+  const width = Number(html.match(/--slide-width:\s*([\d.]+)px/)?.[1]);
+  const height = Number(html.match(/--slide-height:\s*([\d.]+)px/)?.[1]);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return { width, height };
+  }
+  return { width: 1280, height: 720 };
+}
+
+function renderHtmlThumbnail(container, meta, filePath) {
+  const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+  const size = getHtmlPreviewSize(meta.content);
+  const shell = document.createElement('div');
+  shell.className = 'directory-preview-html-shell';
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'directory-preview-html';
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.style.width = `${size.width}px`;
+  iframe.style.height = `${size.height}px`;
+  iframe.srcdoc = rewriteHtmlUrls(meta.content, dir);
+
+  shell.appendChild(iframe);
+  container.appendChild(shell);
+  fitHtmlThumbnail(shell, iframe, size);
+}
+
+function fitHtmlThumbnail(shell, iframe, size) {
+  const apply = () => {
+    if (!shell.isConnected) return;
+    const rect = shell.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const scale = Math.min(rect.width / size.width, rect.height / size.height);
+    const scaledWidth = size.width * scale;
+    const scaledHeight = size.height * scale;
+    iframe.style.transform = `scale(${scale})`;
+    iframe.style.left = `${Math.max(0, (rect.width - scaledWidth) / 2)}px`;
+    iframe.style.top = `${Math.max(0, (rect.height - scaledHeight) / 2)}px`;
+  };
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(() => {
+      if (!shell.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      apply();
+    });
+    observer.observe(shell);
+  }
+  iframe.addEventListener('load', apply);
+  requestAnimationFrame(apply);
+}
+
+async function renderPdfThumbnail(canvas, url) {
+  if (!window.pdfjsLib) {
+    const fallback = document.createElement('div');
+    fallback.className = 'directory-preview-fallback';
+    fallback.textContent = 'PDF';
+    canvas.replaceWith(fallback);
+    return;
+  }
+  try {
+    const pdf = await window.pdfjsLib.getDocument({ url }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 0.45 });
+    if (!canvas.isConnected) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  } catch (err) {
+    if (!canvas.isConnected) return;
+    const fallback = document.createElement('div');
+    fallback.className = 'directory-preview-fallback';
+    fallback.textContent = `PDF 加载失败：${err.message}`;
+    canvas.replaceWith(fallback);
   }
 }
 
