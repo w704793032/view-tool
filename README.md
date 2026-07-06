@@ -42,7 +42,7 @@
 
 ### 方式一:双击可执行文件(分发给非技术同事)
 
-下载对应平台的二进制包,解压后双击即可启动,默认端口 `3000`,会自动用系统默认浏览器打开 `http://localhost:3000`:
+下载对应平台的二进制包,解压后双击即可启动,默认端口 `3333`,会自动用系统默认浏览器打开 `http://localhost:3333`:
 
 | 平台 | 分发包 | 启动方式 |
 |------|--------|----------|
@@ -54,7 +54,7 @@
 >
 > **Windows SmartScreen 可能拦截**:双击未签名的 `.exe` 会弹出"Windows protected your PC"蓝色提示,请点击 **更多信息** → **仍要运行**。
 
-启动后浏览器访问 `http://localhost:3000`。按 `Ctrl+C`(Windows)或 `⌘+.`(macOS)停止服务。
+启动后浏览器访问 `http://localhost:3333`。按 `Ctrl+C`(Windows)或 `⌘+.`(macOS)停止服务。
 
 ### 方式二:从源码运行(开发者)
 
@@ -70,7 +70,7 @@ npm start                  # 等价于 node server.js
 启动后:
 
 - 终端会打印带边框的启动 banner(显示访问地址、根目录、配置文件位置)
-- 默认自动用浏览器打开 `http://localhost:3000`
+- 默认自动用浏览器打开 `http://localhost:3333`
 - 配置改完 `Ctrl+C` 重启即生效
 
 **关于 `config.json`**:`config.json` 不在仓库里(已 gitignore,避免本地路径泄漏)。首次 clone 后没有这个文件,服务端会用内置默认值启动,`rootDir` 默认走 `process.cwd()`。通过 UI 改根目录会自动创建本地 `config.json`,但不会进入 git。
@@ -103,7 +103,7 @@ node server.js [选项]
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--root <path>` | 启动时使用的根目录 | `config.json` 的 `rootDir` 或 `process.cwd()` |
-| `--port <n>` | HTTP 端口 | `config.json` 的 `port` 或 `3000` |
+| `--port <n>` | HTTP 端口 | `config.json` 的 `port` 或 `3333` |
 | `--no-open` | 启动后不自动打开浏览器 | 自动打开(SSH / 无 DISPLAY 时已自动跳过) |
 | `--config <path>` | 自定义 config.json 路径 | 见[配置文件位置](#配置文件位置) |
 
@@ -168,7 +168,7 @@ node server.js --config ~/.view-tool.json
 | `rootDir` | string | 浏览的根目录(绝对路径) | `process.cwd()` |
 | `recentRoots` | string[] | 最近成功通过 UI 切换过的根目录,最多 10 条 | `[]` |
 | `pinnedRoots` | string[] | 用户置顶的常用根目录 | `[]` |
-| `port` | number | HTTP 端口 | `3000` |
+| `port` | number | HTTP 端口 | `3333` |
 | `maxPreviewSize` | number | 预览文件最大字节数,超过转下载 | `5242880`(5 MB) |
 | `version` | number | 配置 schema 版本 | `1` |
 
@@ -195,7 +195,7 @@ node server.js --config ~/.view-tool.json
 
 ```
 ┌────────────────────────────────────────────────────┐
-│ 📁 根目录: D:\projects       [修改]      v1  :3000 │   ← toolbar
+│ 📁 根目录: D:\projects       [修改]      v1  :3333 │   ← toolbar
 ├──────────────┬─────────────────────────────────────┤
 │              │  home > src > lib                  │   ← breadcrumb
 │   目录树     ├─────────────────────────────────────┤
@@ -440,6 +440,6 @@ zip 文件名格式:`view-tool-<hostTag>-<target>.zip`,其中 `hostTag = ${proce
 
 ### 常见报错
 
-- **`端口 3000 已被占用`**:用 `--port <其它端口>` 启动(如 `node server.js --port 8080`),或在本地 `config.json` 的 `port` 字段修改
+- **`端口 3333 已被占用`**:用 `--port <其它端口>` 启动(如 `node server.js --port 8080`),或在本地 `config.json` 的 `port` 字段修改
 - **在 SSH / WSL 等无 GUI 环境**:服务会正常启动但跳过自动开浏览器,终端会打印手动访问地址
 - **`rootDir 不存在或不是目录,回退到 process.cwd()`**:`config.json` 里写了无效路径(可手动编辑本地 `config.json`,或在 UI 里改)

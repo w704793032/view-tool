@@ -11,7 +11,7 @@ cd /d "%~dp0"
 echo.
 echo ============================================================
 echo   view-tool is starting...
-echo   Open http://localhost:3000 in your browser
+echo   Open http://localhost:3333 in your browser
 echo   Press Ctrl+C to stop the service
 echo ============================================================
 echo.

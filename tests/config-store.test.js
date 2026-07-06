@@ -40,7 +40,7 @@ test('load 缺失文件时返回默认值', () => {
   const store = new ConfigStore(p, { rootDir: 'D:\\x' });
   const cfg = store.load();
   assert.strictEqual(cfg.rootDir, 'D:\\x');
-  assert.strictEqual(cfg.port, 3000);
+  assert.strictEqual(cfg.port, 3333);
 });
 
 test('load 已存在文件时读取并合并', () => {
@@ -72,7 +72,7 @@ test('save 写入并可被重新 load', () => {
 test('save 原子写入：临时文件不留存', () => {
   const p = tmpConfigPath();
   const store = new ConfigStore(p, { rootDir: 'D:\\a' });
-  store.save({ rootDir: 'D:\\c', port: 3000, maxPreviewSize: 1024, version: 1 });
+  store.save({ rootDir: 'D:\\c', port: 3333, maxPreviewSize: 1024, version: 1 });
   const dir = path.dirname(p);
   const leftovers = fs.readdirSync(dir).filter((f) => f.includes('.tmp'));
   assert.strictEqual(leftovers.length, 0);
@@ -82,6 +82,6 @@ test('save 写入不存在的目录时自动创建', () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'cstest-'));
   const p = path.join(base, 'sub', 'config.json');
   const store = new ConfigStore(p, { rootDir: 'D:\\a' });
-  store.save({ rootDir: 'D:\\d', port: 3000, maxPreviewSize: 1024, version: 1 });
+  store.save({ rootDir: 'D:\\d', port: 3333, maxPreviewSize: 1024, version: 1 });
   assert.ok(fs.existsSync(p));
 });

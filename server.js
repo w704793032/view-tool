@@ -90,7 +90,7 @@ function start() {
     rootDir = process.cwd();
   }
 
-  const port = config.port || 3000;
+  const port = config.port || 3333;
   const app = express();
   app.use(express.json());
 
