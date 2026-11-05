@@ -18,6 +18,12 @@ function makeFiles() {
   fs.writeFileSync(path.join(root, 'a.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   fs.writeFileSync(path.join(root, 'a.pdf'), Buffer.from('%PDF-1.4'));
   fs.writeFileSync(path.join(root, 'a.pptx'), Buffer.from('pptx-mock'));
+  fs.writeFileSync(path.join(root, 'a.docx'), Buffer.from('docx-mock'));
+  fs.writeFileSync(path.join(root, 'a.xlsx'), Buffer.from('xlsx-mock'));
+  fs.writeFileSync(path.join(root, 'a.xls'), Buffer.from('xls-mock'));
+  fs.writeFileSync(path.join(root, 'a.java'), 'public class A {}\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'a.ps1'), 'Get-ChildItem\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'Dockerfile'), 'FROM node:22\n', 'utf8');
   fs.mkdirSync(path.join(root, 'sub'));
   return root;
 }
@@ -59,6 +65,41 @@ test('readFileMeta PPTX 返回 type=binary + previewable=false', () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('readFileMeta DOCX/XLSX/XLS 返回可预览 Office 类型 + downloadUrl', () => {
+  const root = makeFiles();
+  try {
+    for (const [name, type] of [['a.docx', 'docx'], ['a.xlsx', 'xlsx'], ['a.xls', 'xlsx']]) {
+      const meta = readFileMeta(root, name, { maxPreviewSize: 5242880 });
+      assert.strictEqual(meta.type, type, name);
+      assert.strictEqual(meta.previewable, true, name);
+      assert.ok(meta.downloadUrl.includes('/api/raw'), name);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('readFileMeta Office 文件使用独立的 maxOfficePreviewSize', () => {
+  const root = makeFiles();
+  try {
+    const meta = readFileMeta(root, 'a.docx', {
+      maxPreviewSize: 5242880,
+      maxOfficePreviewSize: 2,
+    });
+    assert.strictEqual(meta.type, 'binary-too-large');
+    assert.match(meta.message, /Office/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('readFileMeta 常见编程语言按文本读取', () => {
+  const root = makeFiles();
+  try {
+    for (const name of ['a.java', 'a.ps1', 'Dockerfile']) {
+      const meta = readFileMeta(root, name, { maxPreviewSize: 5242880 });
+      assert.strictEqual(meta.type, 'text', name);
+      assert.ok(meta.content.length > 0, name);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('readFileMeta 超过 maxPreviewSize 的文件返回 type=binary-too-large', () => {
   const root = makeFiles();
   try {
@@ -96,6 +137,10 @@ test('readFileMeta MIME 推断覆盖常见类型', () => {
       ['.env', 'text/plain'],
       ['a.png', 'image/png'],
       ['a.pdf', 'application/pdf'],
+      ['a.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['a.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      ['a.xls', 'application/vnd.ms-excel'],
+      ['a.java', 'text/x-java-source'],
     ];
     for (const [name, expected] of cases) {
       const meta = readFileMeta(root, name, { maxPreviewSize: 5242880 });

@@ -3,11 +3,11 @@
 > 本地 Web 文件浏览工具 —— 双击打开浏览器,把任意本地目录变成可预览、可搜索、可右键复制的网页。
 
 - **两种用法**:源码 `npm start` 或打包成 Windows / macOS 单文件可执行
-- **零依赖前端**:marked + highlight.js + pdf.js 全部本地化,无需联网
+- **零依赖前端**:marked + highlight.js + pdf.js + docx-preview + SheetJS 全部本地化,无需联网
 - **路径安全**:所有请求经 `safeResolve` 校验,越权一律 403
 - **跨平台**:源码在 Windows / macOS / Linux 都能跑;二进制分发只覆盖 Windows + macOS
 
-版本:`0.2.0` · Node: `>= 22` · 测试:81 个用例全绿
+版本:`0.2.0` · Node: `>= 22` · 测试:98 个用例全绿
 
 ---
 
@@ -80,7 +80,9 @@ npm start                  # 等价于 node server.js
 ## 特性
 
 - **左侧树形目录导航**,懒加载展开,目录排在文件前面(`zh-Hans-CN` 排序),每 5 秒自动刷新且差量复用未变化行
-- **右侧文件预览**:文本 / Markdown / 代码高亮 / 图片 / PDF 分页 / HTML(sandbox iframe)
+- **右侧文件预览**:文本 / Markdown / 代码高亮 / 图片 / PDF 分页 / Word / Excel / HTML(sandbox iframe)
+- **Word / Excel 本地渲染**:`.docx` 用 docx-preview 还原文字、表格、图片、页眉页脚;`.xlsx` 用 SheetJS 渲染多工作表、合并单元格,超大表按 500 行 / 80 列截断
+- **代码高亮覆盖常见语言**:Java / C / C++ / C# / Go / Rust / Ruby / PHP / SQL / Kotlin / Swift / Lua / Perl / R / Objective-C / PowerShell / Dockerfile 等;冷门语法按需从 `vendor/hljs/` 懒加载
 - **运行时在线切换根目录**:工具栏"修改"按钮 → 弹窗输入新路径 → 即时刷新,落盘到 `config.json`
 - **根目录历史快速切换**:工具栏"切换"按钮展示置顶路径和最近路径,点击即可切回常用目录
 - **路径防越权**:所有 API 路径经 `safeResolve` 校验,`..`、绝对路径注入、null 字节、空串一律拒绝
@@ -170,6 +172,7 @@ node server.js --config ~/.view-tool.json
 | `pinnedRoots` | string[] | 用户置顶的常用根目录 | `[]` |
 | `port` | number | HTTP 端口 | `3333` |
 | `maxPreviewSize` | number | 预览文件最大字节数,超过转下载 | `5242880`(5 MB) |
+| `maxOfficePreviewSize` | number | Word / Excel 预览上限,超过转下载 | `20971520`(20 MB) |
 | `version` | number | 配置 schema 版本 | `1` |
 
 ### 配置文件位置
@@ -231,17 +234,21 @@ node server.js --config ~/.view-tool.json
 
 ## 支持的文件类型
 
-`lib/file-reader.js` 根据扩展名分四类,前端按 `type` 字段决定渲染方式:
+`lib/file-reader.js` 根据扩展名分类,前端按 `type` 字段决定渲染方式:
 
 | `type` | 触发扩展名 | 前端表现 |
 |--------|----------|----------|
-| `text` | `.md` `.markdown` `.json` `.html` `.htm` `.xml` `.css` `.js` `.mjs` `.cjs` `.jsx` `.ts` `.mts` `.cts` `.tsx` `.py` `.sh` `.bash` `.zsh` `.ps1` `.yml` `.yaml` `.toml` `.ini` `.env` `.properties` `.conf` `.csv` `.txt` `.log` | Markdown / JSON / HTML 专用预览，其余文本走带语言标签的代码预览 + highlight.js |
+| `text` | `.md` `.json` `.html` `.js` `.ts` `.py` `.java` `.c` `.cpp` `.cs` `.go` `.rs` `.rb` `.php` `.sql` `.kt` `.swift` `.lua` `.pl` `.r` `.ps1` `.sh` `.yml` `.toml` `.ini` `.csv` `.txt` 等,以及 `Dockerfile` / `Makefile` / `CMakeLists.txt` | Markdown / JSON / HTML 专用预览，其余走代码预览 + highlight.js 语法高亮 |
 | `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` | `<img>` 直接渲染,`/api/raw` 提供字节 |
 | `pdf` | `.pdf` | pdf.js 分页渲染,带上一页 / 下一页 |
-| `binary-too-large` | 任何文件 `size > maxPreviewSize` | 灰色卡片 + 下载按钮 |
-| `binary` | `.pptx` `.docx` `.xlsx` `.zip` 等其他 | 灰色卡片 + 文件名/大小 + 下载按钮 |
+| `docx` | `.docx` `.docm` | docx-preview 渲染为 HTML(文字 / 表格 / 图片 / 页眉页脚) |
+| `xlsx` | `.xlsx` `.xlsm` `.xls` | SheetJS 渲染为表格,多工作表切换,超大表截断 |
+| `binary-too-large` | 超过 `maxPreviewSize` / `maxOfficePreviewSize` | 灰色卡片 + 下载按钮 |
+| `binary` | `.pptx` `.doc` `.ppt` `.zip` 等 | 灰色卡片 + 文件名/大小 + 下载按钮 |
 
 HTML 预览额外把相对路径(`src` / `href` / `url()`)重写到 `/api/raw?path=...`,MD 中的 `<img src="...">` 同理。
+
+语言映射表在 `public/text-preview.mjs`,与 `lib/file-reader.js` 的 `TEXT_EXTS` 由 `tests/file-types-parity.test.js` 保证同步。highlight.js 主包内置 36 种语言,Powershell / Dockerfile / Dart / Scala 等按需从 `public/vendor/hljs/` 动态加载。
 
 ---
 
@@ -296,18 +303,20 @@ view-tool/
 ├── public/
 │   ├── index.html               # 工具栏 + 目录树 + 预览 + 右键菜单 DOM
 │   ├── app.js                   # 前端逻辑(原生 ESM,无框架)
+│   ├── text-preview.mjs         # 扩展名 → highlight.js 语言映射
+│   ├── office-preview.mjs       # docx / xlsx 渲染 + 生成 HTML 的安全清理
 │   ├── tree-title.mjs           # 目录树悬停标题与大小 / 时间格式化
 │   ├── tree-refresh.mjs         # 目录树自动刷新间隔与路径规划
 │   ├── tree-reconcile.mjs       # 目录树差量刷新复用判断
 │   ├── styles.css               # 全部样式
-│   └── vendor/                  # 本地化的 marked / highlight.js / pdf.js
+│   └── vendor/                  # 本地化的 marked / highlight.js / pdf.js / docx-preview / JSZip / SheetJS
 │
 ├── scripts/
 │   ├── bundle-public.js         # public/ → base64 内嵌 → lib/public-bundle.gen.js
 │   ├── build-sea.js             # esbuild + SEA + postject + 签名
 │   └── zip-artifact.js          # Windows → Compress-Archive;macOS → ditto
 │
-├── tests/                       # 81 个 node --test 用例
+├── tests/                       # 98 个 node --test 用例
 │   ├── path-guard.test.js       # 8 个
 │   ├── config-store.test.js     # 6 个
 │   ├── tree-builder.test.js     # 7 个
@@ -355,14 +364,21 @@ view-tool/
 npm test
 ```
 
-使用 Node 内置 `node --test`,无第三方测试框架。**当前 81 个用例,0 跳过 / 0 失败**,覆盖:
+使用 Node 内置 `node --test`,无第三方测试框架。**当前 98 个用例,0 跳过 / 0 失败**,覆盖:
 
 - `lib/path-guard.js`:8 个防越权用例(`..` / 绝对路径注入 / null 字节 / 空串等)
-- `lib/config-store.js`:6 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)
+- `lib/config-store.js`:8 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)
 - `lib/tree-builder.js`:7 个目录树用例(类型标记 / 修改时间 / 隐藏过滤 / 排序 / 空目录)
-- `lib/file-reader.js`:8 个文件读取用例(MIME / 文本 / 图片 / PDF / 二进制 / 超大 / 目录)
+- `lib/file-reader.js`:11 个文件读取用例(MIME / 文本 / 图片 / PDF / Office / 二进制 / 超大 / 目录)
 - `lib/reveal.js`:9 个跨平台 reveal 用例(3 个 win32 + 2 个 darwin + 2 个 linux + 2 个异常)
+- `lib/root-history.js`:6 个根目录历史读写用例
 - `tests/html-preview.test.js`:4 个 HTML 预览样式 / sandbox 回归保护
+- `tests/markdown-preview.test.mjs`:3 个 Markdown 预览用例
+- `tests/text-preview.test.mjs`:5 个语言映射与代码预览用例
+- `tests/file-types-parity.test.js`:2 个前后端文本扩展名一致性用例
+- `tests/office-preview.test.mjs`:4 个 Office 大表截断计算用例
+- `tests/root-switcher-ui.test.js`:3 个根目录切换前端用例
+- `tests/server-root-history.test.js`:6 个根目录 API 用例
 - `tests/tree-title.test.mjs`:6 个目录树悬停标题格式用例(修改时间 / 文件大小 / 回退行为)
 - `tests/tree-refresh.test.mjs`:4 个目录树自动刷新路径规划用例
 - `tests/tree-reconcile.test.mjs`:5 个目录树差量刷新复用规则用例
@@ -430,6 +446,10 @@ zip 文件名格式:`view-tool-<hostTag>-<target>.zip`,其中 `hostTag = ${proce
 - **不支持**文件搜索 / 过滤、上传、编辑、用户认证 —— 仅"浏览 + 预览 + 下载"
 - **防越权粒度**为单根目录,不支持多根目录白名单
 - **PDF 渲染**首次访问 PDF 才会加载 `pdf.worker.min.mjs`(按需)
+- **Word / Excel 保真度有限**:docx 的 SmartArt、复杂域、公式编辑器、精确分页不保证;xlsx 的图表、图片、条件格式、数据透视表不渲染,公式只显示 Excel 缓存的值(无缓存则空白)
+- **不支持** `.pptx` / `.doc` / `.ppt`(旧 OLE2 二进制格式);`.pptx` 仍需下载或用外部工具转 HTML
+- **Office 库按需加载**:首次预览 Word 会多下载约 260 KB(JSZip + docx-preview),首次预览 Excel 约 930 KB(SheetJS);之后走浏览器缓存
+- **超大 Office 文件**:超过 `maxOfficePreviewSize`(默认 20 MB)直接转下载;xlsx 预览最多读取 2000 行、渲染 500 行 / 80 列
 - **HTML 预览**的 iframe sandbox 允许脚本运行(opaque origin),预览不可信 HTML 时请注意脚本会执行
 
 ### 分发签名问题

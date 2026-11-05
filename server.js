@@ -179,7 +179,10 @@ function start() {
   app.get('/api/file', (req, res) => {
     try {
       const requested = typeof req.query.path === 'string' ? req.query.path : '';
-      const meta = readFileMeta(rootDir, requested, { maxPreviewSize: config.maxPreviewSize });
+      const meta = readFileMeta(rootDir, requested, {
+        maxPreviewSize: config.maxPreviewSize,
+        maxOfficePreviewSize: config.maxOfficePreviewSize,
+      });
       res.json(meta);
     } catch (err) {
       const r = toResponse(err);

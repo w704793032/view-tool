@@ -24,6 +24,39 @@ test('getTextPreviewInfo maps common source files to highlight languages', () =>
   });
 });
 
+test('getTextPreviewInfo covers common compiled / backend languages', () => {
+  const cases = [
+    ['Main.java', 'java', 'Java'],
+    ['main.c', 'c', 'C'],
+    ['main.cpp', 'cpp', 'C++'],
+    ['Program.cs', 'csharp', 'C#'],
+    ['main.go', 'go', 'Go'],
+    ['lib.rs', 'rust', 'Rust'],
+    ['app.rb', 'ruby', 'Ruby'],
+    ['index.php', 'php', 'PHP'],
+    ['query.sql', 'sql', 'SQL'],
+    ['Main.kt', 'kotlin', 'Kotlin'],
+    ['main.swift', 'swift', 'Swift'],
+    ['init.lua', 'lua', 'Lua'],
+  ];
+  for (const [file, language, label] of cases) {
+    assert.deepEqual(getTextPreviewInfo(file), { kind: 'code', language, label }, file);
+  }
+});
+
+test('getTextPreviewInfo supports lazily loaded grammars and basename files', () => {
+  assert.strictEqual(getTextPreviewInfo('deploy.ps1').language, 'powershell');
+  assert.strictEqual(getTextPreviewInfo('Dockerfile').language, 'dockerfile');
+  assert.strictEqual(getTextPreviewInfo('app.dockerfile').language, 'dockerfile');
+  assert.strictEqual(getTextPreviewInfo('CMakeLists.txt').language, 'cmake');
+  assert.strictEqual(getTextPreviewInfo('Jenkinsfile').language, 'groovy');
+  assert.deepEqual(getTextPreviewInfo('notes.unknown'), {
+    kind: 'code',
+    language: 'plaintext',
+    label: 'Text',
+  });
+});
+
 test('getTextPreviewInfo maps yaml and toml to structured text preview languages', () => {
   assert.deepEqual(getTextPreviewInfo('config.yml'), {
     kind: 'code',

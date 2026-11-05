@@ -1,6 +1,7 @@
 import { buildTreeTitle, formatBytes } from './tree-title.mjs';
 import { renderMarkdownPreviewHtml } from './markdown-preview.mjs';
-import { renderCodePreviewHtml } from './text-preview.mjs';
+import { renderCodePreviewHtml, getTextPreviewInfo, PREVIEW_BY_EXT, PREVIEW_BY_NAME } from './text-preview.mjs';
+import { createDocxPreview, createXlsxPreview } from './office-preview.mjs';
 import {
   TREE_REFRESH_INTERVAL_MS,
   getTreeRefreshPaths,
@@ -734,21 +735,24 @@ function setupTreeAutoRefresh() {
 
 // ============== 文件预览 ==============
 const DIRECTORY_TEXT_PREVIEW_EXTS = new Set([
-  '.md', '.markdown', '.json', '.html', '.htm', '.xml', '.css',
-  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx',
-  '.py', '.sh', '.bash', '.zsh', '.ps1', '.yml', '.yaml', '.toml',
-  '.ini', '.env', '.properties', '.conf', '.csv', '.txt', '.log',
+  ...[...PREVIEW_BY_EXT.keys()].map((ext) => `.${ext}`),
+  ...PREVIEW_BY_NAME.keys(),
 ]);
 const DIRECTORY_MEDIA_PREVIEW_EXTS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf',
 ]);
+const DIRECTORY_OFFICE_PREVIEW_EXTS = new Set([
+  '.docx', '.docm', '.xlsx', '.xlsm', '.xls',
+]);
 const DIRECTORY_PREVIEW_EXTS = new Set([
   ...DIRECTORY_TEXT_PREVIEW_EXTS,
   ...DIRECTORY_MEDIA_PREVIEW_EXTS,
+  ...DIRECTORY_OFFICE_PREVIEW_EXTS,
 ]);
 
 function filePreviewExt(fileName) {
   const lower = String(fileName).split(/[\\/]/).pop().toLowerCase();
+  if (PREVIEW_BY_NAME.has(lower)) return lower;
   const dot = lower.lastIndexOf('.');
   const ext = dot > 0 ? lower.slice(dot) : '';
   if (ext) return ext;
@@ -760,22 +764,23 @@ function looksDirectoryPreviewable(entry) {
 }
 
 function isPreviewableMeta(meta) {
-  return meta.type === 'text' || meta.type === 'image' || meta.type === 'pdf';
+  return meta.type === 'text' || meta.type === 'image' || meta.type === 'pdf'
+    || meta.type === 'docx' || meta.type === 'xlsx';
 }
 
 function previewTypeLabel(meta, filePath) {
   if (meta.type === 'image') return '图片';
   if (meta.type === 'pdf') return 'PDF';
-  const ext = filePreviewExt(filePath);
-  if (ext === '.md' || ext === '.markdown') return 'Markdown';
-  if (ext === '.html' || ext === '.htm') return 'HTML';
-  if (ext === '.json') return 'JSON';
-  return '文本';
+  if (meta.type === 'docx') return 'Word';
+  if (meta.type === 'xlsx') return 'Excel';
+  return getTextPreviewInfo(filePath).label;
 }
 
 function previewKind(meta, filePath) {
   if (meta.type === 'image') return 'image';
   if (meta.type === 'pdf') return 'pdf';
+  if (meta.type === 'docx') return 'docx';
+  if (meta.type === 'xlsx') return 'xlsx';
   const ext = filePreviewExt(filePath);
   if (ext === '.html' || ext === '.htm') return 'html';
   if (ext === '.md' || ext === '.markdown') return 'markdown';
@@ -835,6 +840,16 @@ async function renderPreview(filePath) {
       case 'text': renderText(main, meta, filePath); break;
       case 'image': renderImage(main, meta); break;
       case 'pdf': renderPdf(main, meta); break;
+      case 'docx':
+      case 'xlsx': {
+        main.innerHTML = `<div class="placeholder">正在解析 ${meta.type === 'docx' ? 'Word' : 'Excel'} 文件…</div>`;
+        const node = meta.type === 'docx'
+          ? await createDocxPreview(meta)
+          : await createXlsxPreview(meta);
+        if (requestId !== state.previewRequestId) return;
+        main.replaceChildren(node);
+        break;
+      }
       case 'binary-too-large': renderBinaryTooLarge(main, meta); break;
       case 'binary': renderBinary(main, meta); break;
       default: main.innerHTML = `<div class="error-card">未知文件类型：${meta.type}</div>`;
@@ -956,6 +971,21 @@ function renderDirectoryPreviewTile(item) {
 }
 
 function renderDirectoryTileBody(container, meta, filePath) {
+  if (meta.type === 'docx' || meta.type === 'xlsx') {
+    const isDocx = meta.type === 'docx';
+    const card = document.createElement('div');
+    card.className = 'directory-preview-office';
+    const icon = document.createElement('div');
+    icon.className = 'directory-preview-office-icon';
+    icon.textContent = isDocx ? '📘' : '📗';
+    const hint = document.createElement('div');
+    hint.className = 'directory-preview-office-hint';
+    hint.textContent = `${isDocx ? 'Word 文档' : 'Excel 表格'} · 点击预览`;
+    card.append(icon, hint);
+    container.appendChild(card);
+    return;
+  }
+
   if (meta.type === 'image') {
     const img = document.createElement('img');
     img.className = 'directory-preview-image';
@@ -977,6 +1007,45 @@ function renderDirectoryTileBody(container, meta, filePath) {
   renderTextThumbnail(container, meta, filePath);
 }
 
+// highlight.js 主包只带了 36 种常见语言；其余语法按需从 vendor/hljs 动态加载，
+// 避免首屏多下载几十 KB 用不上的语法文件。
+const EXTRA_HLJS_LANGUAGES = new Set([
+  'powershell', 'dockerfile', 'dart', 'scala', 'elixir', 'haskell',
+  'clojure', 'julia', 'protobuf', 'cmake', 'groovy', 'dos', 'x86asm',
+]);
+const extraHljsLoads = new Map();
+
+async function ensureHljsLanguage(language) {
+  if (!language || !EXTRA_HLJS_LANGUAGES.has(language) || !window.hljs) return;
+  if (window.hljs.getLanguage(language)) return;
+  if (!extraHljsLoads.has(language)) {
+    const load = import(`./vendor/hljs/${language}.min.mjs`)
+      .then((mod) => {
+        if (window.hljs && !window.hljs.getLanguage(language)) {
+          window.hljs.registerLanguage(language, mod.default);
+        }
+      })
+      .catch(() => { /* 语法文件加载失败时保持纯文本 */ });
+    extraHljsLoads.set(language, load);
+  }
+  await extraHljsLoads.get(language);
+}
+
+async function highlightCodeBlocks(root) {
+  if (!window.hljs) return;
+  const blocks = [...root.querySelectorAll('pre code')];
+  await Promise.all(blocks.map(async (el) => {
+    const cls = [...el.classList].find((c) => c.startsWith('language-'));
+    const language = cls ? cls.slice('language-'.length) : '';
+    if (language) {
+      await ensureHljsLanguage(language);
+      if (!window.hljs.getLanguage(language)) return;
+    }
+    if (el.dataset.highlighted) return;
+    window.hljs.highlightElement(el);
+  }));
+}
+
 function renderTextThumbnail(container, meta, filePath) {
   const ext = filePreviewExt(filePath);
   if (ext === '.md' || ext === '.markdown') {
@@ -988,7 +1057,7 @@ function renderTextThumbnail(container, meta, filePath) {
     rewriteMdImages(div, dir);
     container.appendChild(div);
     if (window.hljs) {
-      div.querySelectorAll('pre code').forEach((el) => window.hljs.highlightElement(el));
+      highlightCodeBlocks(div);
     }
     return;
   }
@@ -1106,7 +1175,7 @@ function renderText(container, meta, filePath) {
     rewriteMdImages(div, dir);
     container.appendChild(div);
     if (window.hljs) {
-      div.querySelectorAll('pre code').forEach((el) => window.hljs.highlightElement(el));
+      highlightCodeBlocks(div);
     }
     return;
   }
@@ -1160,7 +1229,7 @@ function renderText(container, meta, filePath) {
   wrap.innerHTML = renderCodePreviewHtml(filePath, meta.content);
   container.appendChild(wrap.firstElementChild);
   if (window.hljs) {
-    container.querySelectorAll('.code-preview pre code').forEach((el) => window.hljs.highlightElement(el));
+    highlightCodeBlocks(container);
   }
 }
 
