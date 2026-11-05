@@ -128,7 +128,7 @@ node server.js --config ~/.view-tool.json
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/api/config` | 读取当前根目录、历史路径与配置版本。响应:`{ rootDir, recentRoots, pinnedRoots, version, port }` |
+| `GET` | `/api/config` | 读取当前根目录、历史路径与配置版本。响应:`{ rootDir, recentRoots, pinnedRoots, version, appVersion, checkForUpdates, port }` |
 | `POST` | `/api/config` | 修改根目录,body `{ "rootDir": "<绝对路径>" }`,成功后写入 `recentRoots` 并落盘到 `config.json` |
 | `POST` | `/api/roots/pin` | 置顶一个存在的根目录,body `{ "rootDir": "<绝对路径>" }` |
 | `POST` | `/api/roots/unpin` | 取消置顶根目录,body `{ "rootDir": "<绝对路径>" }` |
