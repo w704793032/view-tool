@@ -418,14 +418,15 @@ npm run dist:mac
 
 | 产物 | 说明 | 体积(预期) |
 |------|------|-------------|
-| `dist/view-tool.exe` | Windows 单文件可执行 | ~90 MB |
-| `dist/view-tool-win32-x64-win.zip` | Windows 分发包 | ~33 MB |
+| `dist/view-tool.exe` | Windows 单文件可执行 | ~93 MB |
+| `dist/view-tool-win32-x64-win.zip` | Windows 分发包(exe + blob) | ~36 MB |
 | `dist/view-tool` | macOS 单文件可执行 | ~85 MB |
-| `dist/view-tool-darwin-arm64-mac.zip` | macOS Apple Silicon 分发包 | ~30 MB |
-| `dist/view-tool-darwin-x64-mac.zip` | macOS Intel 分发包 | ~30 MB |
-| `dist/view-tool.blob` | SEA blob 副本(供 `isSea()` 检测) | ~3 MB |
+| `dist/view-tool-darwin-arm64-mac.zip` | macOS Apple Silicon 分发包(exe + blob) | ~30 MB |
+| `dist/view-tool-darwin-x64-mac.zip` | macOS Intel 分发包(exe + blob) | ~30 MB |
+| `dist/view-tool.blob` | SEA blob 副本(供 `isSea()` 检测) | ~5 MB |
 
 zip 文件名格式:`view-tool-<hostTag>-<target>.zip`,其中 `hostTag = ${process.platform}-${process.arch}`。
+zip 根目录固定包含可执行文件和 `view-tool.blob`,解压后请保持两者同目录 —— 缺少 blob 时 `isSea()` 会误判为源码模式,配置会落到错误位置。
 
 ### 不能交叉编译
 
