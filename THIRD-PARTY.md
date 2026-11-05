@@ -9,7 +9,7 @@
 | `highlight.min.js` | 11.9.0 | BSD-3-Clause | 代码语法高亮（内置 36 种语言） |
 | `pdf.min.mjs` / `pdf.worker.min.mjs` | 既有版本 | Apache-2.0 | PDF 分页渲染 |
 | `docx-preview.js` | 0.4.1 | Apache-2.0 | Word 文档渲染为 HTML |
-| `jszip.min.js` | 3.10.2 | MIT / GPL-3.0 | 解压 docx（docx-preview 依赖） |
+| `jszip.min.js` | 3.10.2 | MIT / GPL-3.0 | 解压 docx（docx-preview 依赖）以及服务端更新包 |
 | `xlsx.full.min.js` | 0.20.3 | Apache-2.0 | Excel 解析与表格渲染 |
 | `hljs/*.min.mjs` | 11.9.0 | BSD-3-Clause | 按需加载的额外语法（PowerShell / Dockerfile / Dart 等） |
 

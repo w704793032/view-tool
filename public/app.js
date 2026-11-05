@@ -24,6 +24,10 @@ const state = {
   previewRequestId: 0,
   treeRefreshTimer: null,
   treeRefreshInFlight: false,
+  appVersion: '',
+  updateChecked: false,
+  pendingUpdate: null,
+  downloadedUpdate: null,
 };
 
 // ============== 工具 ==============
@@ -276,13 +280,116 @@ function applyConfig(cfg) {
   state.rootDir = cfg.rootDir;
   state.recentRoots = Array.isArray(cfg.recentRoots) ? cfg.recentRoots : [];
   state.pinnedRoots = Array.isArray(cfg.pinnedRoots) ? cfg.pinnedRoots : [];
+  state.appVersion = cfg.appVersion || '';
   document.getElementById('rootDirLabel').textContent = cfg.rootDir;
-  document.getElementById('configBadge').textContent = `端口 ${cfg.port}`;
+  const versionLabel = state.appVersion ? `v${state.appVersion} · ` : '';
+  document.getElementById('configBadge').textContent = `${versionLabel}端口 ${cfg.port}`;
 }
 
 async function loadConfig() {
   const cfg = await apiGet('/api/config');
   applyConfig(cfg);
+}
+
+// ============== 更新检查 ==============
+const UPDATE_SKIP_KEY = 'view-tool:skip-update-version';
+
+function skippedUpdateVersion() {
+  try {
+    return localStorage.getItem(UPDATE_SKIP_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setupUpdateBanner() {
+  const banner = document.getElementById('updateBanner');
+  document.getElementById('updateLaterBtn').addEventListener('click', () => {
+    banner.hidden = true;
+  });
+  document.getElementById('updateSkipBtn').addEventListener('click', () => {
+    const latest = state.pendingUpdate && state.pendingUpdate.latestVersion;
+    if (latest) {
+      try { localStorage.setItem(UPDATE_SKIP_KEY, latest); } catch { /* ignore */ }
+    }
+    banner.hidden = true;
+  });
+  document.getElementById('updateDownloadBtn').addEventListener('click', downloadUpdatePackage);
+  document.getElementById('updateRevealBtn').addEventListener('click', revealDownloadedUpdate);
+}
+
+function showUpdateBanner(info) {
+  state.pendingUpdate = info;
+  const banner = document.getElementById('updateBanner');
+  const published = info.publishedAt ? new Date(info.publishedAt) : null;
+  const dateText = published && !Number.isNaN(published.getTime())
+    ? ` · 发布于 ${published.toLocaleDateString('zh-CN')}`
+    : '';
+  document.getElementById('updateTitle').textContent = `发现新版本 v${info.latestVersion}`;
+  document.getElementById('updateDetail').textContent = `当前版本 v${info.currentVersion}${dateText}`;
+
+  const downloadBtn = document.getElementById('updateDownloadBtn');
+  downloadBtn.hidden = !info.asset;
+  downloadBtn.disabled = false;
+  downloadBtn.textContent = '下载更新';
+
+  const releaseLink = document.getElementById('updateReleaseLink');
+  if (info.releaseUrl && /^https:\/\/github\.com\//.test(info.releaseUrl)) {
+    releaseLink.href = info.releaseUrl;
+    releaseLink.hidden = false;
+  } else {
+    releaseLink.hidden = true;
+  }
+
+  document.getElementById('updateRevealBtn').hidden = true;
+  document.getElementById('updateSkipBtn').hidden = false;
+  document.getElementById('updateLaterBtn').textContent = '稍后';
+  banner.hidden = false;
+}
+
+async function checkForUpdate() {
+  if (state.updateChecked) return;
+  state.updateChecked = true;
+  try {
+    const info = await apiGet('/api/update/check');
+    if (!info || !info.enabled || !info.updateAvailable) return;
+    if (skippedUpdateVersion() === info.latestVersion) return;
+    showUpdateBanner(info);
+  } catch {
+    // 更新检查失败不影响正常使用
+  }
+}
+
+async function downloadUpdatePackage() {
+  const btn = document.getElementById('updateDownloadBtn');
+  btn.disabled = true;
+  btn.textContent = '下载中…';
+  try {
+    const result = await apiPost('/api/update/download', {});
+    state.downloadedUpdate = result;
+    document.getElementById('updateTitle').textContent = `v${result.version} 已下载`;
+    document.getElementById('updateDetail').textContent =
+      `保存位置：${result.dir}。退出程序后，手动用该目录下的 ${result.files.join('、')} 替换当前程序目录中的同名文件。`;
+    btn.hidden = true;
+    document.getElementById('updateRevealBtn').hidden = false;
+    document.getElementById('updateSkipBtn').hidden = true;
+    document.getElementById('updateLaterBtn').textContent = '关闭';
+    showToast('更新包已下载，请按提示手动替换', { kind: 'success', duration: 5000 });
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '下载更新';
+    showToast(`下载失败：${err.message}`, { kind: 'error', duration: 5000 });
+  }
+}
+
+async function revealDownloadedUpdate() {
+  const version = state.downloadedUpdate && state.downloadedUpdate.version;
+  if (!version) return;
+  try {
+    await apiPost('/api/update/reveal', { version });
+  } catch (err) {
+    showToast(`打开文件夹失败：${err.message}`, { kind: 'error' });
+  }
 }
 
 async function changeRootDir(newRoot) {
@@ -1453,6 +1560,7 @@ function setupModal() {
 async function main() {
   setupRootSwitcher();
   setupModal();
+  setupUpdateBanner();
   installPermanentListeners();
   suppressNativeContextMenuOnCtxMenu();
   document.getElementById('ctxmenu').addEventListener('click', onContextMenuClick);
@@ -1461,6 +1569,7 @@ async function main() {
     await renderTree();
     await renderBreadcrumb();
     setupTreeAutoRefresh();
+    checkForUpdate();
   } catch (err) {
     showError(`初始化失败：${err.message}`);
   }

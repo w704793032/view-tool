@@ -11,6 +11,25 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .root-dir { font-family: ui-monospace, Menlo, Consolas, monospace; color: #333; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar-spacer { flex: 1; }
 .badge { color: #999; font-size: 12px; }
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #eaf3ff;
+  border-bottom: 1px solid #b6d4fe;
+  font-size: 13px;
+}
+.update-banner[hidden] { display: none; }
+.update-banner-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.update-banner-copy strong { color: #1a4d8f; }
+.update-banner-copy span { color: #4a5b6d; overflow-wrap: anywhere; }
+.update-banner-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.update-banner-actions [hidden] { display: none; }
+@media (max-width: 720px) {
+  .update-banner { flex-direction: column; align-items: flex-start; }
+}
 .btn { padding: 4px 12px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .btn:hover { background: #f0f0f0; }
 .btn-primary { background: #2b6cb0; color: white; border-color: #2b6cb0; }

@@ -19,6 +19,20 @@
     <span id="configBadge" class="badge"></span>
   </header>
 
+  <div id="updateBanner" class="update-banner" hidden>
+    <div class="update-banner-copy">
+      <strong id="updateTitle"></strong>
+      <span id="updateDetail"></span>
+    </div>
+    <div class="update-banner-actions">
+      <button id="updateDownloadBtn" class="btn btn-primary" type="button">下载更新</button>
+      <button id="updateRevealBtn" class="btn" type="button" hidden>打开文件夹</button>
+      <a id="updateReleaseLink" class="btn" target="_blank" rel="noopener" hidden>打开发布页</a>
+      <button id="updateLaterBtn" class="btn" type="button">稍后</button>
+      <button id="updateSkipBtn" class="btn" type="button">跳过此版本</button>
+    </div>
+  </div>
+
   <div class="layout">
     <aside class="sidebar">
       <div id="tree" class="tree" role="tree" aria-label="目录树"></div>

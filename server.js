@@ -18,6 +18,9 @@ const { AppError, toResponse, Codes } = require('./lib/errors');
 const { safeResolve } = require('./lib/path-guard');
 const { buildRevealCommand } = require('./lib/reveal');
 const { userConfigPath, isSea } = require('./lib/user-paths');
+const { APP_VERSION } = require('./lib/version');
+const { checkForUpdates, normalizeVersion } = require('./lib/update-check');
+const { downloadUpdate, getUpdateDir } = require('./lib/update-download');
 
 // public-bundle.gen.js 由 scripts/bundle-public.js 在 SEA 构建时生成并打进 blob。
 // 源码运行（npm start）下不存在此文件，自动回退到 express.static。
@@ -100,6 +103,8 @@ function start() {
       recentRoots: config.recentRoots || [],
       pinnedRoots: config.pinnedRoots || [],
       version: config.version,
+      appVersion: APP_VERSION,
+      checkForUpdates: config.checkForUpdates !== false,
       port,
     };
   }
@@ -224,6 +229,93 @@ function start() {
     } catch (err) {
       const r = toResponse(err);
       res.status(r.status).json(r.body);
+    }
+  });
+
+  app.post('/api/update/reveal', (req, res) => {
+    try {
+      const version = req.body && req.body.version;
+      if (typeof version !== 'string' || !normalizeVersion(version)) {
+        return res.status(400).json({
+          error: { code: 'BAD_REQUEST', message: 'version 无效' },
+        });
+      }
+      const dir = getUpdateDir(version);
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+        return res.status(404).json({
+          error: { code: 'NOT_FOUND', message: '更新目录不存在，请先下载' },
+        });
+      }
+      const { cmd, args } = buildRevealCommand(dir, 'dir');
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false });
+      child.on('error', (err) => {
+        if (!res.headersSent) {
+          res.status(500).json({ error: { code: 'READ_FAILED', message: err.message } });
+        }
+      });
+      child.unref();
+      res.json({ ok: true, dir });
+    } catch (err) {
+      const r = toResponse(err);
+      res.status(r.status).json(r.body);
+    }
+  });
+
+  // ============== 更新检查 / 下载 ==============
+  let updateDownloadInFlight = false;
+
+  app.get('/api/update/check', async (req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (config.checkForUpdates === false) {
+        return res.json({ ok: false, enabled: false, currentVersion: APP_VERSION });
+      }
+      const result = await checkForUpdates({ force: req.query.force === '1' });
+      res.json(result);
+    } catch (err) {
+      const r = toResponse(err);
+      res.status(r.status).json(r.body);
+    }
+  });
+
+  app.post('/api/update/download', async (_req, res) => {
+    if (config.checkForUpdates === false) {
+      return res.status(400).json({
+        error: { code: 'UPDATE_DISABLED', message: '更新检查已关闭' },
+      });
+    }
+    if (updateDownloadInFlight) {
+      return res.status(409).json({
+        error: { code: 'UPDATE_IN_PROGRESS', message: '更新正在下载中，请稍候' },
+      });
+    }
+
+    updateDownloadInFlight = true;
+    try {
+      const check = await checkForUpdates();
+      if (!check.ok) {
+        return res.status(503).json({
+          error: { code: 'UPDATE_CHECK_FAILED', message: '暂时无法检查更新，请稍后再试' },
+        });
+      }
+      if (!check.updateAvailable) {
+        return res.status(409).json({
+          error: { code: 'UPDATE_NOT_AVAILABLE', message: '当前已是最新版本' },
+        });
+      }
+      if (!check.asset) {
+        return res.status(404).json({
+          error: { code: 'NO_ASSET', message: '该版本没有适用于当前平台的安装包' },
+        });
+      }
+      const result = await downloadUpdate(check.asset, check.latestVersion);
+      res.json({ ...result, currentVersion: APP_VERSION });
+    } catch (err) {
+      res.status(500).json({
+        error: { code: 'UPDATE_FAILED', message: err.message || '更新下载失败' },
+      });
+    } finally {
+      updateDownloadInFlight = false;
     }
   });
 

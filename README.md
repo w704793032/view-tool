@@ -7,7 +7,7 @@
 - **路径安全**:所有请求经 `safeResolve` 校验,越权一律 403
 - **跨平台**:源码在 Windows / macOS / Linux 都能跑;二进制分发只覆盖 Windows + macOS
 
-版本:`0.2.0` · Node: `>= 22` · 测试:98 个用例全绿
+版本:`0.3.0` · Node: `>= 22` · 测试:119 个用例全绿
 
 ---
 
@@ -24,6 +24,7 @@
 - [浏览器 UI](#浏览器-ui)
   - [右键菜单](#右键菜单)
   - [HTML 预览的安全说明](#html-预览的安全说明)
+- [更新检查](#更新检查)
 - [支持的文件类型](#支持的文件类型)
 - [跨平台"在文件管理器中打开"](#跨平台在文件管理器中打开)
 - [安全模型](#安全模型)
@@ -82,6 +83,7 @@ npm start                  # 等价于 node server.js
 - **左侧树形目录导航**,懒加载展开,目录排在文件前面(`zh-Hans-CN` 排序),每 5 秒自动刷新且差量复用未变化行
 - **右侧文件预览**:文本 / Markdown / 代码高亮 / 图片 / PDF 分页 / Word / Excel / HTML(sandbox iframe)
 - **Word / Excel 本地渲染**:`.docx` 用 docx-preview 还原文字、表格、图片、页眉页脚;`.xlsx` 用 SheetJS 渲染多工作表、合并单元格,超大表按 500 行 / 80 列截断
+- **更新提示与手动更新**:启动时查询 GitHub Releases,发现新版本显示横幅;用户点击后下载、校验 SHA256、解压到用户数据目录,再手动替换 exe/blob
 - **代码高亮覆盖常见语言**:Java / C / C++ / C# / Go / Rust / Ruby / PHP / SQL / Kotlin / Swift / Lua / Perl / R / Objective-C / PowerShell / Dockerfile 等;冷门语法按需从 `vendor/hljs/` 懒加载
 - **运行时在线切换根目录**:工具栏"修改"按钮 → 弹窗输入新路径 → 即时刷新,落盘到 `config.json`
 - **根目录历史快速切换**:工具栏"切换"按钮展示置顶路径和最近路径,点击即可切回常用目录
@@ -135,6 +137,9 @@ node server.js --config ~/.view-tool.json
 | `GET` | `/api/file?path=<rel>` | 读取文件元数据 + 文本内容(若可预览),详见[支持的文件类型](#支持的文件类型) |
 | `GET` | `/api/raw?path=<rel>` | 流式下载文件原始字节(图片、PDF、二进制、大文件均用此端点) |
 | `POST` | `/api/reveal` | 在系统文件管理器中打开 / 选中,body `{ "path": "<rel>" }`,响应 `{ ok, kind }` |
+| `GET` | `/api/update/check` | 查询 GitHub 最新 Release 并与当前版本比较;支持 `?force=1` 跳过缓存 |
+| `POST` | `/api/update/download` | 下载、校验并解压当前平台更新包到用户数据目录,响应 `{ version, dir, files }` |
+| `POST` | `/api/update/reveal` | 打开已下载的更新目录,body `{ "version": "<semver>" }` |
 
 `/api/tree` 会显示以 `.` 开头的文件 / 目录,符号链接仍会被跳过(`buildTree` 显式 `isSymbolicLink()` 过滤)。`mtimeMs` 是该文件或目录自身最后修改时间的 Unix 毫秒时间戳。`/api/file`、`/api/raw` 可读取根目录内通过 `safeResolve` 校验的文件。
 
@@ -173,6 +178,7 @@ node server.js --config ~/.view-tool.json
 | `port` | number | HTTP 端口 | `3333` |
 | `maxPreviewSize` | number | 预览文件最大字节数,超过转下载 | `5242880`(5 MB) |
 | `maxOfficePreviewSize` | number | Word / Excel 预览上限,超过转下载 | `20971520`(20 MB) |
+| `checkForUpdates` | boolean | 启动时是否查询 GitHub Releases | `true` |
 | `version` | number | 配置 schema 版本 | `1` |
 
 ### 配置文件位置
@@ -232,6 +238,24 @@ node server.js --config ~/.view-tool.json
 
 ---
 
+## 更新检查
+
+启动后前端会调用 `/api/update/check`，服务端查询 GitHub Releases（带 ETag 和 24 小时文件缓存）。发现新版本时，工具栏下方会出现更新横幅：
+
+| 按钮 | 行为 |
+|------|------|
+| 下载更新 | 调用 `/api/update/download`，下载当前平台 zip，校验 GitHub 返回的 SHA256，解压到 `%APPDATA%\view-tool\updates\<version>\` |
+| 打开发布页 | 在浏览器打开对应的 GitHub Release |
+| 打开文件夹 | 打开已下载的更新目录（`POST /api/update/reveal`） |
+| 跳过此版本 | 记录到浏览器 `localStorage`，下次不再提示该版本 |
+| 稍后 | 仅关闭当前提示 |
+
+更新**不会自动覆盖正在运行的 exe**：退出程序后，手动用下载目录里的 `view-tool.exe` / `view-tool.blob` 替换当前程序目录中的同名文件即可。
+
+关闭更新检查：在 `config.json` 里设置 `"checkForUpdates": false`。GitHub API 未认证限流约 60 次/小时/IP，已通过 24 小时缓存降低请求频率；限流或离线时会静默跳过，不影响使用。
+
+---
+
 ## 支持的文件类型
 
 `lib/file-reader.js` 根据扩展名分类,前端按 `type` 字段决定渲染方式:
@@ -288,7 +312,7 @@ view-tool/
 ├── package.json
 ├── package-lock.json
 ├── sea-config.json              # SEA 构建清单(useCodeCache / disableExperimentalSEAWarning)
-├── server.js                    # Express 入口:CLI 解析 + 配置加载 + 6 个路由 + 启动 banner
+├── server.js                    # Express 入口:CLI 解析 + 配置加载 + HTTP 路由 + 启动 banner
 ├── .gitignore
 │
 ├── lib/
@@ -298,7 +322,10 @@ view-tool/
 │   ├── tree-builder.js          # 单层目录列表,可配置隐藏项显示,过滤符号链接,目录优先
 │   ├── file-reader.js           # 元信息 + 文本读取 + 流下载 + MIME 表
 │   ├── reveal.js                # 平台特定 reveal 命令构造(纯函数)
-│   └── user-paths.js            # 跨平台用户数据目录 + isSea() 检测
+│   ├── user-paths.js            # 跨平台用户数据目录 + isSea() 检测
+│   ├── version.js               # 从 package.json 读取应用版本
+│   ├── update-check.js          # GitHub Releases 检查 + semver 比较 + 24h 缓存
+│   └── update-download.js       # 更新包下载 + SHA256 校验 + 解压
 │
 ├── public/
 │   ├── index.html               # 工具栏 + 目录树 + 预览 + 右键菜单 DOM
@@ -316,13 +343,23 @@ view-tool/
 │   ├── build-sea.js             # esbuild + SEA + postject + 签名
 │   └── zip-artifact.js          # Windows → Compress-Archive;macOS → ditto
 │
-├── tests/                       # 98 个 node --test 用例
+├── tests/                       # 119 个 node --test 用例
 │   ├── path-guard.test.js       # 8 个
-│   ├── config-store.test.js     # 6 个
+│   ├── config-store.test.js     # 8 个
 │   ├── tree-builder.test.js     # 7 个
-│   ├── file-reader.test.js      # 8 个
+│   ├── file-reader.test.js      # 11 个
 │   ├── reveal.test.js           # 9 个(win32 + darwin + linux + 异常)
 │   ├── html-preview.test.js     # 4 个(sandbox + className 回归保护)
+│   ├── markdown-preview.test.mjs # 3 个
+│   ├── text-preview.test.mjs    # 5 个(语言映射 / 代码预览)
+│   ├── file-types-parity.test.js # 2 个(前后端扩展名一致性)
+│   ├── office-preview.test.mjs  # 4 个(Office 大表截断)
+│   ├── update-check.test.js     # 8 个(版本比较 / 缓存 / 限流 / 异常)
+│   ├── update-download.test.js  # 9 个(校验 / 解压 / 路径安全)
+│   ├── update-ui.test.js        # 4 个(更新横幅前端接线)
+│   ├── root-history.test.js     # 6 个
+│   ├── root-switcher-ui.test.js # 3 个
+│   ├── server-root-history.test.js # 6 个
 │   ├── tree-title.test.mjs      # 6 个(目录树悬停标题格式)
 │   ├── tree-refresh.test.mjs    # 4 个(自动刷新间隔与路径规划)
 │   ├── tree-reconcile.test.mjs  # 5 个(差量刷新复用规则)
@@ -364,7 +401,7 @@ view-tool/
 npm test
 ```
 
-使用 Node 内置 `node --test`,无第三方测试框架。**当前 98 个用例,0 跳过 / 0 失败**,覆盖:
+使用 Node 内置 `node --test`,无第三方测试框架。**当前 119 个用例,0 跳过 / 0 失败**,覆盖:
 
 - `lib/path-guard.js`:8 个防越权用例(`..` / 绝对路径注入 / null 字节 / 空串等)
 - `lib/config-store.js`:8 个配置读写用例(缺失文件 / 损坏 JSON / 原子写入 / 自动建目录)
@@ -377,6 +414,9 @@ npm test
 - `tests/text-preview.test.mjs`:5 个语言映射与代码预览用例
 - `tests/file-types-parity.test.js`:2 个前后端文本扩展名一致性用例
 - `tests/office-preview.test.mjs`:4 个 Office 大表截断计算用例
+- `tests/update-check.test.js`:8 个版本比较 / 缓存 / 限流 / 异常用例
+- `tests/update-download.test.js`:9 个 SHA256 校验 / zip 解压 / 路径安全用例
+- `tests/update-ui.test.js`:4 个更新横幅前端接线用例
 - `tests/root-switcher-ui.test.js`:3 个根目录切换前端用例
 - `tests/server-root-history.test.js`:6 个根目录 API 用例
 - `tests/tree-title.test.mjs`:6 个目录树悬停标题格式用例(修改时间 / 文件大小 / 回退行为)
@@ -451,6 +491,8 @@ zip 根目录固定包含可执行文件和 `view-tool.blob`,解压后请保持�
 - **不支持** `.pptx` / `.doc` / `.ppt`(旧 OLE2 二进制格式);`.pptx` 仍需下载或用外部工具转 HTML
 - **Office 库按需加载**:首次预览 Word 会多下载约 260 KB(JSZip + docx-preview),首次预览 Excel 约 930 KB(SheetJS);之后走浏览器缓存
 - **超大 Office 文件**:超过 `maxOfficePreviewSize`(默认 20 MB)直接转下载;xlsx 预览最多读取 2000 行、渲染 500 行 / 80 列
+- **更新检查依赖 GitHub 可达**:启动时请求 GitHub Releases API,未认证限流约 60 次/小时/IP;已做 24 小时缓存,限流或离线时静默跳过。可在 `config.json` 里设 `checkForUpdates: false` 关闭
+- **更新为手动替换**:下载并校验后会解压到用户数据目录,不会自动覆盖正在运行的 exe;退出程序后手动替换 `view-tool.exe` / `view-tool.blob` 即可
 - **HTML 预览**的 iframe sandbox 允许脚本运行(opaque origin),预览不可信 HTML 时请注意脚本会执行
 
 ### 分发签名问题
